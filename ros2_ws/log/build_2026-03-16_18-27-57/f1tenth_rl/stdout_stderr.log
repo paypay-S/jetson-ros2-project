@@ -1,0 +1,22 @@
+running egg_info
+writing ../../build/f1tenth_rl/f1tenth_rl.egg-info/PKG-INFO
+writing dependency_links to ../../build/f1tenth_rl/f1tenth_rl.egg-info/dependency_links.txt
+writing entry points to ../../build/f1tenth_rl/f1tenth_rl.egg-info/entry_points.txt
+writing requirements to ../../build/f1tenth_rl/f1tenth_rl.egg-info/requires.txt
+writing top-level names to ../../build/f1tenth_rl/f1tenth_rl.egg-info/top_level.txt
+reading manifest file '../../build/f1tenth_rl/f1tenth_rl.egg-info/SOURCES.txt'
+writing manifest file '../../build/f1tenth_rl/f1tenth_rl.egg-info/SOURCES.txt'
+running build
+running build_py
+copying f1tenth_rl/rl_driver.py -> /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build/lib/f1tenth_rl
+running install
+running install_lib
+copying /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build/lib/f1tenth_rl/rl_driver.py -> /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl
+byte-compiling /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl/rl_driver.py to rl_driver.cpython-310.pyc
+running install_data
+running install_egg_info
+removing '/home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl-0.0.0-py3.10.egg-info' (and everything under it)
+Copying ../../build/f1tenth_rl/f1tenth_rl.egg-info to /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl-0.0.0-py3.10.egg-info
+running install_scripts
+Installing rl_driver script to /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/f1tenth_rl
+writing list of installed files to '/home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/install.log'

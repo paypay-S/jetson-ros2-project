@@ -1,0 +1,24 @@
+[1.330s] Invoking command in '/home/toyonishiorin/f1tenth-project/ros2_ws/src/f1tenth_rl': PYTHONPATH=/home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(jetson-ros2) /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/f1tenth_rl build --build-base /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build install --record /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/install.log --single-version-externally-managed install_data
+[1.820s] running egg_info
+[1.822s] writing ../../build/f1tenth_rl/f1tenth_rl.egg-info/PKG-INFO
+[1.822s] writing dependency_links to ../../build/f1tenth_rl/f1tenth_rl.egg-info/dependency_links.txt
+[1.823s] writing entry points to ../../build/f1tenth_rl/f1tenth_rl.egg-info/entry_points.txt
+[1.823s] writing requirements to ../../build/f1tenth_rl/f1tenth_rl.egg-info/requires.txt
+[1.823s] writing top-level names to ../../build/f1tenth_rl/f1tenth_rl.egg-info/top_level.txt
+[1.827s] reading manifest file '../../build/f1tenth_rl/f1tenth_rl.egg-info/SOURCES.txt'
+[1.828s] writing manifest file '../../build/f1tenth_rl/f1tenth_rl.egg-info/SOURCES.txt'
+[1.829s] running build
+[1.829s] running build_py
+[1.829s] copying f1tenth_rl/rl_driver.py -> /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build/lib/f1tenth_rl
+[1.830s] running install
+[1.830s] running install_lib
+[1.832s] copying /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build/lib/f1tenth_rl/rl_driver.py -> /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl
+[1.833s] byte-compiling /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl/rl_driver.py to rl_driver.cpython-310.pyc
+[1.835s] running install_data
+[1.835s] running install_egg_info
+[1.839s] removing '/home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl-0.0.0-py3.10.egg-info' (and everything under it)
+[1.839s] Copying ../../build/f1tenth_rl/f1tenth_rl.egg-info to /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages/f1tenth_rl-0.0.0-py3.10.egg-info
+[1.841s] running install_scripts
+[1.879s] Installing rl_driver script to /home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/f1tenth_rl
+[1.880s] writing list of installed files to '/home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/install.log'
+[1.950s] Invoked command in '/home/toyonishiorin/f1tenth-project/ros2_ws/src/f1tenth_rl' returned '0': PYTHONPATH=/home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/toyonishiorin/f1tenth-project/ros2_ws/install/f1tenth_rl/lib/python3.10/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(jetson-ros2) /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/f1tenth_rl build --build-base /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/build install --record /home/toyonishiorin/f1tenth-project/ros2_ws/build/f1tenth_rl/install.log --single-version-externally-managed install_data

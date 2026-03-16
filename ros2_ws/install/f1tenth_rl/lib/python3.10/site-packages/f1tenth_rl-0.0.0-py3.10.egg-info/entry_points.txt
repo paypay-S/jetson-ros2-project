@@ -1,0 +1,3 @@
+[console_scripts]
+rl_driver = f1tenth_rl.rl_driver:main
+
