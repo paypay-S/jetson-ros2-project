@@ -4,62 +4,108 @@
 
 ## ディレクトリ構成
 
-- `ros2_ws/`: ROS2ワークスペース
-  - `src/f1tenth_rl/`: 強化学習エージェントを実行するメインのROS2パッケージ。
-    - `rl_driver.py`: LiDARとOdometryデータをSubscribeし、学習済みモデルを用いて推論を行い、AckermannDriveStampedメッセージをPublishして車両を制御します。
-  - `scripts/`: テストスクリプトやモデルファイルなどが配置されています。モデルファイル（`model.zip`）はデフォルトでここに置く想定です。
-- `jetson-ros2/`: (無視設定済み) Pythonの仮想環境など。
+```
+f1tenth-project/
+├── ros2_ws/
+│   ├── models/
+│   │   └── model.zip          # 学習済みPPOモデル
+│   ├── src/
+│   │   └── f1tenth_rl/
+│   │       ├── f1tenth_rl/
+│   │       │   ├── rl_driver.py       # LiDAR+Odom → PPO推論 → /drive パブリッシュ
+│   │       │   └── hardware_bridge.py # /drive → PCA9685 (ステアリング/ESC)
+│   │       └── launch/
+│   │           └── f1tenth_rl.launch.py  # 2ノード同時起動
+│   └── scripts/tests/         # 各種テストスクリプト
+└── jetson-ros2/               # Python仮想環境
+```
+
+## ノード構成
+
+```
+/scan (LaserScan) ──┐
+                    ├─▶ rl_driver ──▶ /drive ──▶ hardware_bridge ──▶ PCA9685
+/odom (Odometry) ──┘                             ch0: ステアリングサーボ
+                                                 ch1: ESC / モーター
+```
 
 ## 前提条件
 
-- ROS2 (Foxy / Humble など)
+- ROS2 (Humble 推奨)
 - Python 3
-- 必要なPythonパッケージ:
-  - `rclpy`
-  - `numpy`
-  - `stable_baselines3`
-- 必要なROS2パッケージ:
-  - `sensor_msgs`
-  - `nav_msgs`
-  - `ackermann_msgs`
+- Pythonパッケージ: `rclpy`, `numpy`, `stable_baselines3`
+- ROSパッケージ: `sensor_msgs`, `nav_msgs`, `ackermann_msgs`
+- ハードウェアパッケージ（Jetson実機用）: `adafruit-circuitpython-pca9685`
 
 ## インストールとビルド
-
-1. ワークスペースのビルド
 
 ```bash
 cd ~/f1tenth-project/ros2_ws
 colcon build --packages-select f1tenth_rl
-```
-
-2. 環境変数のセットアップ
-
-```bash
 source install/setup.bash
 ```
 
-## 実行方法
+## 実機走行
 
-モデルファイル(`model.zip`)が `/home/toyonishiorin/f1tenth-project/ros2_ws/scripts/model.zip` に存在することを確認してください。
-
-以下のコマンドでRLドライバノードを起動します。
+### 1. launchで全ノード起動（推奨）
 
 ```bash
+ros2 launch f1tenth_rl f1tenth_rl.launch.py
+```
+
+モデルパスを変更する場合:
+```bash
+ros2 launch f1tenth_rl f1tenth_rl.launch.py model_path:=/別の/パス/model
+```
+
+### 2. 個別起動
+
+```bash
+# ターミナル1: ハードウェアブリッジ（先に起動）
+ros2 run f1tenth_rl hardware_bridge
+
+# ターミナル2: RLドライバ
 ros2 run f1tenth_rl rl_driver
 ```
 
-### パラメータの変更
+### ハードウェアパラメータ（hardware_bridge）
 
-モデルファイルのパスが異なる場合は、実行時にパラメータを上書きできます。
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `steer_ch` | 0 | ステアリングのPCA9685チャンネル |
+| `steer_center` | 4700 | ステアリング中央のduty_cycle |
+| `steer_left` | 3700 | 最大左のduty_cycle |
+| `steer_right` | 5700 | 最大右のduty_cycle |
+| `steer_max_angle` | 0.4 | モデル出力の最大ステア角（rad） |
+| `esc_ch` | 1 | ESCのPCA9685チャンネル |
+| `esc_stop` | 5200 | 停止時のduty_cycle |
+| `esc_forward` | 5800 | 前進時のduty_cycle（固定速度モード） |
+| `fixed_speed_mode` | True | Trueで固定速度、Falseでスケール速度 |
+| `esc_arm_duration` | 3.0 | 起動時のESCアーム待機秒数 |
 
+パラメータのオーバーライド例:
 ```bash
-ros2 run f1tenth_rl rl_driver --ros-args -p model_path:=/別の/パス/model.zip
+ros2 run f1tenth_rl hardware_bridge --ros-args -p steer_center:=4600 -p fixed_esc_duty:=5700
 ```
 
 ## トピック
 
-- **Subscribes:**
-  - `/scan` (`sensor_msgs/LaserScan`): LiDARの距離データ (1080データにクロップ/パディングされます)
-  - `/odom` (`nav_msgs/Odometry`): 車両の現在速度とステアリング状態の取得
-- **Publishes:**
-  - `/drive` (`ackermann_msgs/AckermannDriveStamped`): 車両への速度・ステアリング制御指令
+| トピック | 型 | 方向 | 説明 |
+|---|---|---|---|
+| `/scan` | `sensor_msgs/LaserScan` | Subscribe | LiDARデータ（1080点にクロップ/パディング） |
+| `/odom` | `nav_msgs/Odometry` | Subscribe | 車両の速度・状態 |
+| `/drive` | `ackermann_msgs/AckermannDriveStamped` | Pub/Sub | 速度・ステアリング指令 |
+
+## テスト（実機なし）
+
+```bash
+cd ~/f1tenth-project/ros2_ws/scripts/tests
+
+# モデルロード確認
+python3 test.py
+
+# 環境確認
+python3 test-cnviroment.py
+```
+
+`hardware_bridge`はハードウェア未接続時に自動でDRY-RUNモードに切り替わり、ログ出力のみ行います。

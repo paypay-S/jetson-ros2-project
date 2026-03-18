@@ -12,6 +12,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/launch', glob('launch/*.py')),
     ],
     install_requires=['setuptools', 'stable_baselines3'],
     zip_safe=True,
@@ -22,7 +23,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'rl_driver = f1tenth_rl.rl_driver:main'
+            'rl_driver = f1tenth_rl.rl_driver:main',
+            'hardware_bridge = f1tenth_rl.hardware_bridge:main',
         ],
     },
 )
