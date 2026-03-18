@@ -9,5 +9,7 @@ setup.py
 ../../build/f1tenth_rl/f1tenth_rl.egg-info/top_level.txt
 ../../build/f1tenth_rl/f1tenth_rl.egg-info/zip-safe
 f1tenth_rl/__init__.py
+f1tenth_rl/hardware_bridge.py
 f1tenth_rl/rl_driver.py
+launch/f1tenth_rl.launch.py
 resource/f1tenth_rl
