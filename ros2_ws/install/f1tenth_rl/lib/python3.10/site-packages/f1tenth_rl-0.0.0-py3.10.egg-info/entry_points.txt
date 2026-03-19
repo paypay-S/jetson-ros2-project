@@ -1,4 +1,0 @@
-[console_scripts]
-hardware_bridge = f1tenth_rl.hardware_bridge:main
-rl_driver = f1tenth_rl.rl_driver:main
-

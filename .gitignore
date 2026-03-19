@@ -1,9 +1,89 @@
-jetson-ros2/
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*~
+*.swp
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 build/
-install/
-log/
-**/__pycache__/
-*.pyc
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.pytest_cache/
+.coverage
+.cache
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual Environments
 venv/
 .venv/
 env/
+ENV/
+jetson-ros2-g4/
+jetson-ros2/
+
+# ROS 2
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+ros2_ws/install/
+# If build/install/log are at the root
+install/
+log/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# AI/ML & Jetson Specific
+*.engine
+*.onnx
+*.weights
+*.weights.*
+*.pth
+*.pt
+*.h5
+*.tflite
+*.pb
+
+# C++ / Build
+*.o
+*.obj
+*.so
+*.a
+*.lib
+*.dll
+*.exe
+
+# Logs & Backup
+*.log
+*.bak
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
