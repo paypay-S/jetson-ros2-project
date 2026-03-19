@@ -1,2 +1,0 @@
-setuptools
-stable_baselines3
