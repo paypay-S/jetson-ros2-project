@@ -55,6 +55,15 @@ class RLDriver(Node):
             10
         )
 
+        # 4. Sim-to-Real 用のパラメータと変数
+        self.declare_parameter('use_sim_to_real', True)
+        self.declare_parameter('lidar_noise_std', 0.02)     # LiDARへのガウスノイズ (m)
+        self.declare_parameter('steer_smoothing', 0.5)      # 0.0~1.0 (大きいほど新しい値を優先)
+        self.declare_parameter('speed_smoothing', 0.8)      # 速度の平滑化
+
+        self.last_steer = 0.0
+        self.last_speed = 0.0
+
     def odom_callback(self, msg):
         # 現在の走行速度を更新
         self.speed = msg.twist.twist.linear.x
@@ -76,13 +85,20 @@ class RLDriver(Node):
             neginf=0.0
         )
 
-        # 4. モデル入力サイズに合わせるため、データが少なければパディング、多ければカット
+        # 5. モデル入力サイズに合わせるため、データが少なければパディング、多ければカット
         TARGET_SIZE = 1080
         if len(lidar) >= TARGET_SIZE:
             lidar = lidar[:TARGET_SIZE]
         else:
             padding_size = TARGET_SIZE - len(lidar)
             lidar = np.pad(lidar, (0, padding_size), 'constant', constant_values=(msg.range_max,))
+
+        # 6. Sim-to-Real: 観測データへのノイズ追加 (堅牢性の向上)
+        if self.get_parameter('use_sim_to_real').value:
+            noise_std = self.get_parameter('lidar_noise_std').value
+            if noise_std > 0:
+                noise = np.random.normal(0, noise_std, size=lidar.shape).astype(np.float32)
+                lidar = np.clip(lidar + noise, 0.0, msg.range_max)
 
         # state作成
         state = np.concatenate([
@@ -108,6 +124,18 @@ class RLDriver(Node):
         else:
             pred_speed = 0.0
             pred_steer = 0.0
+
+        # 7. Sim-to-Real: アクションの平滑化 (EMA)
+        # 急激なステアリング変化によるサーボへの負荷と機体の挙動不整合を抑制
+        if self.get_parameter('use_sim_to_real').value:
+            s_alpha = self.get_parameter('steer_smoothing').value
+            v_alpha = self.get_parameter('speed_smoothing').value
+            
+            pred_steer = s_alpha * pred_steer + (1.0 - s_alpha) * self.last_steer
+            pred_speed = v_alpha * pred_speed + (1.0 - v_alpha) * self.last_speed
+            
+        self.last_steer = pred_steer
+        self.last_speed = pred_speed
 
         drive_msg.drive.speed = pred_speed
         drive_msg.drive.steering_angle = pred_steer

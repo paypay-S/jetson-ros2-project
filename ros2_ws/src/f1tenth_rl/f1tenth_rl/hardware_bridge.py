@@ -49,6 +49,7 @@ class HardwareBridge(Node):
         self.declare_parameter('steer_left',   3700)   # steering_angle > 0 (左)
         self.declare_parameter('steer_right',  5700)   # steering_angle < 0 (右)
         self.declare_parameter('steer_max_angle', 0.4)  # rad, モデル出力の最大ステア角
+        self.declare_parameter('steer_bias', 0)         # ステアリングのセンターオフセット調整 (duty_cycle単位)
 
         # ESC (ch1)
         self.declare_parameter('esc_ch', 1)
@@ -70,6 +71,7 @@ class HardwareBridge(Node):
         self.steer_left    = self.get_parameter('steer_left').value
         self.steer_right   = self.get_parameter('steer_right').value
         self.steer_max_rad = self.get_parameter('steer_max_angle').value
+        self.steer_bias    = self.get_parameter('steer_bias').value
 
         self.esc_ch      = self.get_parameter('esc_ch').value
         self.esc_stop    = self.get_parameter('esc_stop').value
@@ -130,6 +132,10 @@ class HardwareBridge(Node):
              self.steer_right,
              self.steer_left
         )
+
+        # ── ステアリングバイアスの適用 (実機の個体差を吸収) ──
+        steer_duty += self.steer_bias
+        steer_duty = clamp(steer_duty, min(self.steer_left, self.steer_right), max(self.steer_left, self.steer_right))
 
         # ── ESC (速度) 変換 ──
         if self.fixed_speed_mode:
