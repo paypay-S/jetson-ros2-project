@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>f1tenth_mapping</name>
+  <version>0.1.0</version>
+  <description>
+    F1TENTH 実機用マップ作成ツール。
+    slam_toolbox を使い LiDAR で SLAM マップを生成し、
+    f1tenth-rl-project の my_maps/ へ自動同期する。
+  </description>
+  <maintainer email="user@example.com">F1TENTH User</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <!-- SLAM -->
+  <exec_depend>slam_toolbox</exec_depend>
+
+  <!-- マップ保存 -->
+  <exec_depend>nav2_map_server</exec_depend>
+
+  <!-- 手動走行 -->
+  <exec_depend>teleop_twist_keyboard</exec_depend>
+
+  <!-- LiDAR / マップ関連メッセージ -->
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+
+  <!-- Launch -->
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

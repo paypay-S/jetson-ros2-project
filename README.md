@@ -92,7 +92,73 @@ python3 scripts/tests/test_safety.py
 python3 scripts/tests/test_sil_integration.py
 ```
 
+## 🗺️ マップ作成 (f1tenth_mapping)
+
+実機のLiDARを使ってSLAMでマップを生成し、`f1tenth-rl-project` へ自動同期するツールです。
+SSH越しにキーボードで操作することを想定しています（ノーディスプレイ対応）。
+
+### 事前準備
+
+```bash
+# slam_toolbox のインストール確認 (Jetson上)
+ros2 pkg list | grep slam_toolbox
+
+# インストールされていない場合
+sudo apt install ros-humble-slam-toolbox ros-humble-nav2-map-server
+```
+
+### パッケージのビルド
+
+```bash
+cd ~/projects/jetson-ros2-project/ros2_ws
+colcon build --packages-select f1tenth_mapping
+source install/setup.bash
+```
+
+### マッピング手順
+
+**ターミナル1 (SSH): マッピング開始**
+```bash
+cd ~/projects/jetson-ros2-project
+./scripts/start_mapping.sh
+# → beep×2音で起動完了。teleop_twist_keyboard の操作画面が表示される。
+```
+
+**ターミナル1: キーボードで車体を手動操縦してコースを走る**
+```
+u i o   ← 前左・前進・前右
+j k l   ← 左回転・停止・右回転
+q / z   ← 速度アップ / ダウン
+```
+
+**ターミナル2 (SSH別ウィンドウ): マップ状態の確認（任意）**
+```bash
+ros2 topic echo /map_metadata
+```
+
+**マッピング完了後: マップ保存 & 同期**
+```bash
+# ターミナル1 で Ctrl+C してから実行
+./scripts/save_and_sync.sh <マップ名>
+
+# 例:
+./scripts/save_and_sync.sh circuit_warehouse
+# → 長音beep1回で完了。f1tenth-rl-project/my_maps/ に自動コピーされる。
+```
+
+### 生成後の使い方
+
+`f1tenth-rl-project/src/config.py` の `MAP_PATH` を更新して新マップでトレーニングを開始：
+
+```python
+MAP_PATH = os.environ.get("MAP_PATH", "/workspace/my_maps/circuit_warehouse")
+```
+
+---
+
 ## 🛠️ トラブルシューティング
 
 - **[DRY-RUN] と表示される場合**: I2C の権限が不足しているか、ライブラリのパスが通っていません。`sudo chmod 666 /dev/i2c-1` を試すか、`setup_jetson.sh` を再実行してください。
 - **緊急停止が頻発する場合**: 前方 6cm 程度に LiDAR のノイズがある可能性があります。`rl_driver.py` 内の crop 範囲を確認するか、`safety_stop_dist` を調整してください。
+- **slam_toolbox が起動しない場合**: `ros2 topic echo /scan` でLiDARデータが届いているか確認してください。
+- **save_and_sync.sh でマップ保存が失敗する場合**: `start_mapping.sh` が起動中のまま別ターミナルから実行してください（`/map` トピックが必要です）。

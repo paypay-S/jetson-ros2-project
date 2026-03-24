@@ -1,0 +1,42 @@
+slam_toolbox:
+  ros__parameters:
+
+    # ─── 基本設定 ───────────────────────────────────────────────────────
+    # f1tenth-rl-project の my_map.yaml と解像度を統一（0.075 m/pixel）
+    resolution: 0.075
+
+    # slam_toolbox の動作モード: async = リアルタイム非同期マッピング
+    # （Jetson の処理能力に合わせて非同期を選択）
+    mode: mapping
+
+    # ─── トピック / フレーム設定 ────────────────────────────────────────
+    scan_topic: /scan
+    odom_frame: odom
+    map_frame: map
+    base_frame: base_link
+
+    # ─── マップ更新タイミング ───────────────────────────────────────────
+    # 走行距離 0.1m または 角度変化 0.1rad ごとにスキャンマッチング
+    minimum_travel_distance: 0.1  # メートル
+    minimum_travel_heading: 0.1   # ラジアン
+    map_update_interval: 5.0      # 秒ごとにマップファイルを更新
+
+    # ─── スキャンマッチング設定 ─────────────────────────────────────────
+    use_scan_matching: true
+    use_scan_barycenter: true     # スキャン重心を使って安定性向上
+
+    # ─── LiDARレンジ（F1Tenth 標準 Hokuyo / RPLiDAR の範囲に合わせる）
+    minimum_laser_range: 0.1      # メートル（近距離ノイズ除去）
+    maximum_laser_range: 20.0     # メートル（センサー最大レンジ）
+
+    # ─── スタックポーズ設定 ─────────────────────────────────────────────
+    # ループクロージャを有効化（コース1周後に地図の歪みを補正）
+    do_loop_closing: true
+    loop_match_minimum_chain_size: 10
+    loop_match_maximum_variance_coarse: 3.0
+    loop_match_minimum_response_coarse: 0.35
+    loop_match_minimum_response_fine: 0.45
+
+    # ─── 保存設定 ───────────────────────────────────────────────────────
+    # マッピング中の自動保存を無効（map_saver_cli で明示的に保存する）
+    map_file_name: ""
