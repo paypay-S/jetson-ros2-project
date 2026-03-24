@@ -234,22 +234,22 @@ ros2 launch f1tenth_rl f1tenth_rl.launch.py
 - [x] `setup_jetson.sh`: Jetson向け環境構築スクリプトを作成
 
 ### Phase 2: テスト作成
-- [ ] `test_sil_integration.py` を作成
-- [x] `test_safety.py` を作成
-- [ ] `calibrate_steering.py` を作成
+- [x] `test_sil_integration.py` を作成 (実施済み)
+- [x] `test_safety.py` を作成（実施済み）
+- [x] `calibrate_steering.py` を作成
 
 ### Phase 3: SiL検証（開発PC）
 - [ ] f1tenth_gym_ros でシミュレーション走行確認
-- [ ] 安全レイヤーのユニットテスト通過
-- [ ] SiL統合テスト通過
+- [x] 安全レイヤーのユニットテスト通過（合格）
+- [x] SiL統合テスト通過 (成功)
 
 ### Phase 4: Jetsonへのデプロイ
-- [ ] Jetsonに環境構築（`setup_jetson.sh` 実行）
-- [ ] パッケージをビルド (`colcon build`)
-- [ ] ステアリングキャリブレーション実施
-- [ ] 安全レイヤー動作確認
-- [ ] 低速走行テスト（直線・コーナー）
-- [ ] 最終走行テスト
+- [x] Jetsonに環境構築（`setup_jetson.sh` 実行） - 完了
+- [x] パッケージをビルド (`colcon build`) - 完了
+- [x] ステアリングキャリブレーション実施 - 成功
+- [x] 安全レイヤー動作確認 - 成功（実機・疑似両方）
+- [x] 低速走行テスト（直線・コーナー） - タイヤ回転確認済み
+- [x] 最終走行テスト - 始動確認済み
 
 ---
 

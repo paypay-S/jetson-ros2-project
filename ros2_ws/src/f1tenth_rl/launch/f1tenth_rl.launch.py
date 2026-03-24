@@ -33,7 +33,7 @@ def generate_launch_description():
             'lidar_downsample_step': 10,
             'lidar_center_crop': True,
             'safety_enable':     True,
-            'safety_stop_dist':  0.3,
+            'safety_stop_dist':  0.2,
         }]
     )
 
@@ -45,22 +45,23 @@ def generate_launch_description():
         parameters=[{
             # ステアリング (ch0)
             'steer_ch':        0,
-            'steer_center':    4700,
-            'steer_left':      3700,
-            'steer_right':     5700,
+            'steer_center':    4950,
+            'steer_left':      3500,
+            'steer_right':     6000,
             'steer_max_angle': 0.4,    # rad
             'steer_bias':      0,
             'steer_flip':      False,
 
             # ESC (ch1)
-            'esc_ch':      1,
-            'esc_stop':    5200,
-            'esc_forward': 5800,
-            'esc_reverse': 4000,
+            'esc_ch':           1,
+            'esc_stop':         5200,
+            'esc_forward':      5800,
+            'esc_reverse':      4000,
+            'speed_flip':       True,   # 逆転しているためTrueに設定
 
             # 固定速度モード
             'fixed_speed_mode': True,
-            'fixed_esc_duty':   5800,
+            'fixed_esc_duty':   5700,
             'speed_threshold':  0.05,
 
             # ESCアーム待機時間

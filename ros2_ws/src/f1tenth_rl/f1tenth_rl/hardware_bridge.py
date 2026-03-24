@@ -14,14 +14,23 @@ from rclpy.node import Node
 from ackermann_msgs.msg import AckermannDriveStamped
 import math
 import time
+import sys
+import os
 
+# 仮想環境のライブラリパスを強制追加 (ROS2の shebang 対策)
+VENV_PATH = "/home/toyonishiorin/f1tenth-project/jetson-ros2/lib/python3.10/site-packages"
+if VENV_PATH not in sys.path and os.path.exists(VENV_PATH):
+    sys.path.append(VENV_PATH)
+
+HW_AVAILABLE = False
+IMPORT_ERROR_MSG = ""
 try:
     import board
     import busio
     from adafruit_pca9685 import PCA9685
     HW_AVAILABLE = True
-except Exception:
-    HW_AVAILABLE = False
+except Exception as e:
+    IMPORT_ERROR_MSG = str(e)
 
 
 def clamp(value, min_val, max_val):
@@ -57,6 +66,7 @@ class HardwareBridge(Node):
         self.declare_parameter('esc_stop',    5200)
         self.declare_parameter('esc_forward', 5800)
         self.declare_parameter('esc_reverse', 4000)
+        self.declare_parameter('speed_flip', False)     # スロットルの正負を反転させるか
 
         # 固定走行速度モード
         self.declare_parameter('fixed_speed_mode', True)
@@ -84,6 +94,7 @@ class HardwareBridge(Node):
         self.fixed_esc_duty   = self.get_parameter('fixed_esc_duty').value
         self.speed_threshold  = self.get_parameter('speed_threshold').value
         self.esc_arm_duration = self.get_parameter('esc_arm_duration').value
+        self.speed_flip       = self.get_parameter('speed_flip').value
 
         # ─── PCA9685 初期化 ──────────────────────────────────────────
         self.pca = None
@@ -108,7 +119,10 @@ class HardwareBridge(Node):
                 self.pca = None
         else:
             self.get_logger().warn(
-                'adafruit_pca9685 not available. Running in DRY-RUN mode (no hardware output).'
+                f'Hardware libraries not available. REASON: {IMPORT_ERROR_MSG}'
+            )
+            self.get_logger().warn(
+                'Running in DRY-RUN mode (no hardware output).'
             )
 
         # ─── サブスクライバ ──────────────────────────────────────────
@@ -124,6 +138,10 @@ class HardwareBridge(Node):
     def drive_callback(self, msg):
         speed        = msg.drive.speed
         steer_angle  = msg.drive.steering_angle  # rad, 正=左, 負=右
+
+        # ── スロットル反転の適用 ──
+        if self.speed_flip:
+            speed = -speed
 
         # ── ステアリング反転の適用 ──
         if self.steer_flip:

@@ -1,95 +1,98 @@
-# F1TENTH RL Project
+# F1TENTH Reinforcement Learning Hardware Integration
 
-このプロジェクトは、F1TENTH車両を強化学習(RL)モデル（Stable Baselines3 PPO）を用いて自律走行させるためのROS 2ワークスペースです。
+このプロジェクトは、F1TENTH 車両を強化学習モデル（SB3 / PPO）を用いて Jetson 実機上で自律走行させるための ROS 2 システムです。
+実機特有のハードウェア制御、安全レイヤー、およびキャリブレーション機能が含まれています。
 
-## 特徴
-- **可変次元LiDAR入力対応**: モデルの入力次元（108次元など）に合わせて、LiDARデータを動的にダウンサンプリング/パディング可能。
-- **実機対応ハードウェアブリッジ**: `/drive` 指令を PCA9685 経由でステアリングサーボとESCに変換。
-- **Sim-to-Real 対策**: LiDARへのノイズ追加や、アクション（ステアリング）の平滑化 (EMA) を実装済み。
-- **安全設計**: 起動時のESCアーム待機処理、終了時の緊急停止、およびライブラリ未対応時のDRY-RUNモードを搭載。
+## 🏎️ システム構成
 
----
-
-## ディレクトリ構成
-
-```text
-f1tenth-project/
-├── ros2_ws/
-│   ├── models/
-│   │   └── model.zip          # 学習済みPPOモデル
-│   ├── src/
-│   │   └── f1tenth_rl/
-│   │       ├── f1tenth_rl/
-│   │       │   ├── rl_driver.py       # LiDAR+Odom → PPO推論 → /drive
-│   │       │   └── hardware_bridge.py # /drive → PCA9685 (Servo/ESC)
-│   │       └── launch/
-│   │           └── f1tenth_rl.launch.py  # 全ノード起動設定
-│   └── scripts/tests/         # 各種テスト用スクリプト
-└── jetson-ros2/               # Python仮想環境 (venv)
-```
+- **rl_driver**: LiDAR / Odometry データを入力とし、AIモデル（PPO）を用いてステアリングと速度を決定します。
+- **hardware_bridge**: ROS 2 の `AckermannDrive` 指令を、PCA9685 経由の PWM 信号に変換し、サーボとESCを制御します。
+- **Safety Layer**: 前方の障害物を検知すると、AIの推論を待たずに即座に「緊急停止」をかけます。
 
 ---
 
-## 準備
+## 🚀 クイックスタート (Jetson)
 
-### 1. 仮想環境の有効化
-ライブラリのインポートエラーを防ぐため、常にこの環境で作業してください。
+### 1. 環境構築
+まずは Jetson 上で必要なライブラリと仮想環境をセットアップします。
+
 ```bash
-source ~/f1tenth-project/jetson-ros2/bin/activate
+# プロジェクトルートで実行
+chmod +x setup_jetson.sh
+./setup_jetson.sh
 ```
 
 ### 2. ビルド
-仮想環境がアクティブな状態でビルドを行います。
+仮想環境を有効にし、ROS 2 ワークスペースをビルドします。
+
 ```bash
-cd ~/f1tenth-project/ros2_ws
-rm -rf build/ install/ log/  # 初回や環境変更時はクリーン推奨
-colcon build --packages-select f1tenth_rl
+source jetson-ros2/bin/activate
+cd ros2_ws
+colcon build --symlink-install
 source install/setup.bash
 ```
 
-### 3. ハードウェア通信チェック (任意)
-PCA9685と正しく通信できているか確認できます。
+### 3. ハードウェアの調整 (非常に重要)
+走行前に、ステアリングのセンター位置やESCの動作を確認します。
+**※車体を引きずるのを防ぐため、必ず車体を台に乗せてタイヤを浮かせた状態で実行してください。**
+
 ```bash
-python3 src/debug_i2c.py
+python3 scripts/calibrate_steering.py
 ```
+- `A` / `D` : ステアリング微調整
+- `W` / `S` : モーター動作確認
+- `Space` : 停止・中央復帰
+- ここで得た数値を、後の Launch パラメータ（`steer_bias` など）に反映させます。
 
 ---
 
-## 実行方法
+## 🕹️ 走行・操作方法 (ROS 2 Launch)
 
-### 推奨：Launchファイルで一括起動
-実機のLiDARモデルに合わせてパラメータを指定して起動します。
+### 実機での自律走行
+以下のコマンドで、AIノードとハードウェアブリッジを同時に起動します。
 
 ```bash
-# 例：モデルが108次元LiDAR入力を想定している場合
+source jetson-ros2/bin/activate
+source ros2_ws/install/setup.bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py \
-    lidar_num_beams:=108 \
-    lidar_downsample_step:=10 \
-    steer_smoothing:=0.5
+    safety_stop_dist:=0.3 \
+    fixed_speed_mode:=True \
+    fixed_esc_duty:=5600
 ```
 
-### 主要な起動パラメータ
-
-#### rl_driver (AI推論)
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `model_path` | `.../models/model` | 学習済みモデルのパス（.zipなし） |
-| `lidar_num_beams` | 108 | モデルに入力するLiDARの次元数 |
-| `lidar_downsample_step` | 10 | `/scan` トピックの間引き間隔 |
-| `steer_smoothing` | 0.5 | ステアリングのEMA平滑化係数 (0.0=変化なし, 1.0=即時反映) |
-
-#### hardware_bridge (実機制御)
-| パラメータ | デフォルト | 説明 |
-|---|---|---|
-| `steer_center` | 4700 | 中央位置の duty_cycle |
-| `steer_left` | 3700 | 最大左の duty_cycle |
-| `steer_right` | 5700 | 最大右の duty_cycle |
-| `fixed_speed_mode` | True | Trueで一定速度で走行。FalseでAIの出力を反映 |
-| `fixed_esc_duty` | 5800 | 前進時の一定速度 duty_cycle |
-| `esc_arm_duration` | 3.0 | 起動時のESCロック解除待機時間(秒) |
+#### 主要なパラメータ
+| パラメータ名 | デフォルト値 | 説明 |
+| :--- | :--- | :--- |
+| `safety_enable` | `True` | 緊急停止機能を有効にするか |
+| `safety_stop_dist` | `0.3` | 緊急停止をかける前方距離 (m) |
+| `fixed_speed_mode` | `True` | 一定速度走行モード (初心者におすすめ) |
+| `fixed_esc_duty` | `5800` | 前進時のパワー (5200が停止) |
+| `steer_flip` | `False` | ステアリングの左右が逆の場合に `True` に設定 |
+| `steer_bias` | `0` | ステアリングのセンターオフセット調整 |
 
 ---
 
-## 開発とテスト
-- **DRY-RUNモード**: 実機（PCA9685等）が接続されていない、またはライブラリが不足している場合、自動的に `[DRY-RUN]` ログを出力する安全モードで動作します。
-- **テストスクリプト**: `src/f1tenth_rl/scripts/tests/` 内に各機能を単体テストするためのスクリプトを用意しています。
+## 🧪 テストと検証
+
+### 安全レイヤーの検証
+疑似的に障害物データを流し、システムが正しく「速度 0.0」を出すかを確認します。
+
+```bash
+# ターミナル1: AIノード起動
+ros2 run f1tenth_rl rl_driver
+
+# ターミナル2: 検証スクリプト
+python3 scripts/tests/test_safety.py
+```
+
+### SiL (Software-in-the-Loop) 統合テスト
+内部パイプラインが正常に繋がっているかを一括チェックします。
+
+```bash
+python3 scripts/tests/test_sil_integration.py
+```
+
+## 🛠️ トラブルシューティング
+
+- **[DRY-RUN] と表示される場合**: I2C の権限が不足しているか、ライブラリのパスが通っていません。`sudo chmod 666 /dev/i2c-1` を試すか、`setup_jetson.sh` を再実行してください。
+- **緊急停止が頻発する場合**: 前方 6cm 程度に LiDAR のノイズがある可能性があります。`rl_driver.py` 内の crop 範囲を確認するか、`safety_stop_dist` を調整してください。

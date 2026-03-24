@@ -1,10 +1,17 @@
 import os
+import sys
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
 import numpy as np
+
+# 仮想環境のライブラリパスを強制追加
+VENV_PATH = "/home/toyonishiorin/f1tenth-project/jetson-ros2/lib/python3.10/site-packages"
+if VENV_PATH not in sys.path and os.path.exists(VENV_PATH):
+    sys.path.append(VENV_PATH)
+
 from stable_baselines3 import PPO
 
 class RLDriver(Node):
@@ -123,21 +130,32 @@ class RLDriver(Node):
             padding_size = target_size - len(lidar)
             lidar = np.pad(lidar, (0, padding_size), 'constant', constant_values=(msg.range_max,))
 
-        # 8. 安全レイヤー: 前方の障害物検知
+        # 8. 安全レイヤー: 前方の障害物検知 (最優先)
         is_emergency = False
         if self.get_parameter('safety_enable').value:
             stop_dist = self.get_parameter('safety_stop_dist').value
-            # 切り出したLiDARのうち、中央付近（±30度程度）をチェック
-            # ※ 108次元の場合、中心54を基準に±12点程度 (約30度 × 108/270度 = 12)
+            # 中央付近をチェック
             check_width = max(1, target_size // 8)
             center_idx = target_size // 2
             front_beams = lidar[center_idx - check_width : center_idx + check_width]
             
             if len(front_beams) > 0 and np.min(front_beams) < stop_dist:
                 is_emergency = True
-                self.get_logger().warn(f"EMERGENCY STOP! Obstacle detected at {np.min(front_beams):.2f}m")
+                self.get_logger().warn(f"EMERGENCY! Distance: {np.min(front_beams):.2f}m. Skipping inference.")
 
-        # 6. Sim-to-Real: 観測データへのノイズ追加 (堅牢性の向上)
+        if is_emergency:
+            # 推論をスキップして即座にパブリッシュ
+            self.last_steer = 0.0
+            self.last_speed = 0.0
+            drive_msg = AckermannDriveStamped()
+            drive_msg.header.stamp = self.get_clock().now().to_msg()
+            drive_msg.header.frame_id = "base_link"
+            drive_msg.drive.speed = 0.0
+            drive_msg.drive.steering_angle = 0.0
+            self.drive_pub.publish(drive_msg)
+            return
+
+        # 6. Sim-to-Real: 観測データへのノイズ追加
         if self.get_parameter('use_sim_to_real').value:
             noise_std = self.get_parameter('lidar_noise_std').value
             if noise_std > 0:
@@ -158,23 +176,20 @@ class RLDriver(Node):
         drive_msg.header.stamp = self.get_clock().now().to_msg()
         drive_msg.header.frame_id = "base_link"
         
-        # ※ 学習済みモデルの Action 出力次元 (速度とステアリングの2次元か、ステアリングのみの1次元か) に応じて処理
         if len(action) >= 2:
             pred_speed = float(action[0])
             pred_steer = float(action[1])
         elif len(action) == 1:
-            pred_speed = 1.0  # デフォルト速度
+            pred_speed = 1.0
             pred_steer = float(action[0])
         else:
             pred_speed = 0.0
             pred_steer = 0.0
 
         # 7. Sim-to-Real: アクションの平滑化 (EMA)
-        # 急激なステアリング変化によるサーボへの負荷と機体の挙動不整合を抑制
         if self.get_parameter('use_sim_to_real').value:
             s_alpha = self.get_parameter('steer_smoothing').value
             v_alpha = self.get_parameter('speed_smoothing').value
-            
             pred_steer = s_alpha * pred_steer + (1.0 - s_alpha) * self.last_steer
             pred_speed = v_alpha * pred_speed + (1.0 - v_alpha) * self.last_speed
             
@@ -184,13 +199,7 @@ class RLDriver(Node):
         drive_msg.drive.speed = pred_speed
         drive_msg.drive.steering_angle = pred_steer
 
-        # 指令値をPublish (緊急時は上書き)
-        if is_emergency:
-            drive_msg.drive.speed = 0.0
-            drive_msg.drive.steering_angle = 0.0
-            self.last_speed = 0.0
-            self.last_steer = 0.0
-
+        # 指令値をPublish
         self.drive_pub.publish(drive_msg)
 
 def main(args=None):
