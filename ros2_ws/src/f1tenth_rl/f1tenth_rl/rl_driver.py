@@ -20,10 +20,14 @@ class RLDriver(Node):
         
         # モデル読み込み
         try:
-            # SB3は拡張子 .zip を自動付与するため、ここでは拡張子なしのパスを渡すか、
-            # あるいは明示的にチェックする
             self.model = PPO.load(model_path)
             self.get_logger().info(f"Loaded RL model from {model_path}")
+            
+            # 1.1 モデルの入出力次元を検証
+            obs_shape = self.model.observation_space.shape[0]
+            act_shape = self.model.action_space.shape[0]
+            self.get_logger().info(f"Model Space: Observation={obs_shape}, Action={act_shape}")
+            
         except Exception as e:
             self.get_logger().error(f"Failed to load model from {model_path}: {e}")
             self.model = None
@@ -64,6 +68,11 @@ class RLDriver(Node):
         # 5. LiDARの前処理パラメータ (可変次元対応)
         self.declare_parameter('lidar_num_beams', 108)      # モデルに入力するLiDARの次元数
         self.declare_parameter('lidar_downsample_step', 10) # 間引き間隔
+        self.declare_parameter('lidar_center_crop', True)   # 中心を基準とした切り出しを行うか
+        
+        # 8. 安全レイヤー (前方衝突検知)
+        self.declare_parameter('safety_enable', True)
+        self.declare_parameter('safety_stop_dist', 0.3)     # 緊急停止距離 (m)
 
         self.last_steer = 0.0
         self.last_speed = 0.0
@@ -92,6 +101,16 @@ class RLDriver(Node):
         # 5. ダウンサンプリングとサイズ調整 (モデル入力を108次元等に合わせる)
         downsample_step = self.get_parameter('lidar_downsample_step').value
         target_size = self.get_parameter('lidar_num_beams').value
+        center_crop = self.get_parameter('lidar_center_crop').value
+
+        # 中心クロップ (前方中心を基準に取り出す)
+        if center_crop:
+            n = len(lidar)
+            # モデルが必要な元の点数 (target * step)
+            required_raw = target_size * downsample_step
+            if n > required_raw:
+                start_idx = (n - required_raw) // 2
+                lidar = lidar[start_idx : start_idx + required_raw]
 
         # 間引き処理
         if downsample_step > 1:
@@ -103,6 +122,20 @@ class RLDriver(Node):
         else:
             padding_size = target_size - len(lidar)
             lidar = np.pad(lidar, (0, padding_size), 'constant', constant_values=(msg.range_max,))
+
+        # 8. 安全レイヤー: 前方の障害物検知
+        is_emergency = False
+        if self.get_parameter('safety_enable').value:
+            stop_dist = self.get_parameter('safety_stop_dist').value
+            # 切り出したLiDARのうち、中央付近（±30度程度）をチェック
+            # ※ 108次元の場合、中心54を基準に±12点程度 (約30度 × 108/270度 = 12)
+            check_width = max(1, target_size // 8)
+            center_idx = target_size // 2
+            front_beams = lidar[center_idx - check_width : center_idx + check_width]
+            
+            if len(front_beams) > 0 and np.min(front_beams) < stop_dist:
+                is_emergency = True
+                self.get_logger().warn(f"EMERGENCY STOP! Obstacle detected at {np.min(front_beams):.2f}m")
 
         # 6. Sim-to-Real: 観測データへのノイズ追加 (堅牢性の向上)
         if self.get_parameter('use_sim_to_real').value:
@@ -151,15 +184,26 @@ class RLDriver(Node):
         drive_msg.drive.speed = pred_speed
         drive_msg.drive.steering_angle = pred_steer
 
-        # 指令値をPublish
+        # 指令値をPublish (緊急時は上書き)
+        if is_emergency:
+            drive_msg.drive.speed = 0.0
+            drive_msg.drive.steering_angle = 0.0
+            self.last_speed = 0.0
+            self.last_steer = 0.0
+
         self.drive_pub.publish(drive_msg)
 
 def main(args=None):
     rclpy.init(args=args)
     node = RLDriver()
-    rclpy.spin(node)
-    node.destroy_node()
-    rclpy.shutdown()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__ == "__main__":
     main()

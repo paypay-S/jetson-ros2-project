@@ -50,6 +50,7 @@ class HardwareBridge(Node):
         self.declare_parameter('steer_right',  5700)   # steering_angle < 0 (右)
         self.declare_parameter('steer_max_angle', 0.4)  # rad, モデル出力の最大ステア角
         self.declare_parameter('steer_bias', 0)         # ステアリングのセンターオフセット調整 (duty_cycle単位)
+        self.declare_parameter('steer_flip', False)     # ステアリングの正負を反転させるか
 
         # ESC (ch1)
         self.declare_parameter('esc_ch', 1)
@@ -72,6 +73,7 @@ class HardwareBridge(Node):
         self.steer_right   = self.get_parameter('steer_right').value
         self.steer_max_rad = self.get_parameter('steer_max_angle').value
         self.steer_bias    = self.get_parameter('steer_bias').value
+        self.steer_flip    = self.get_parameter('steer_flip').value
 
         self.esc_ch      = self.get_parameter('esc_ch').value
         self.esc_stop    = self.get_parameter('esc_stop').value
@@ -122,6 +124,10 @@ class HardwareBridge(Node):
     def drive_callback(self, msg):
         speed        = msg.drive.speed
         steer_angle  = msg.drive.steering_angle  # rad, 正=左, 負=右
+
+        # ── ステアリング反転の適用 ──
+        if self.steer_flip:
+            steer_angle = -steer_angle
 
         # ── ステアリング変換 ──
         # steer_angle: [-steer_max_rad, +steer_max_rad] → [steer_right, steer_left]
@@ -189,7 +195,8 @@ def main(args=None):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

@@ -223,19 +223,19 @@ ros2 launch f1tenth_rl f1tenth_rl.launch.py
 ## 5. 作業チェックリスト
 
 ### Phase 0: 確認・準備
-- [ ] `model.zip` の観測空間（1080次元 or 1082次元）を確認
+- [x] `model.zip` の観測空間（110次元: 108 LiDAR + 2 Odom）を確認
 - [ ] JetsonのJetPackバージョンを確認 (`jetson_release`)
 
 ### Phase 1: コード改修
-- [ ] `rl_driver.py`: LiDARクロップ方式を中心クロップに変更
-- [ ] `rl_driver.py`: 安全レイヤーを追加（前方衝突検知）
-- [ ] `rl_driver.py`: 観測空間の自動検証ログを追加
-- [ ] `hardware_bridge.py`: `steer_flip` パラメータを追加
-- [ ] `setup_jetson.sh`: Jetson向け環境構築スクリプトを作成
+- [x] `rl_driver.py`: LiDARクロップ方式を中心クロップに変更
+- [x] `rl_driver.py`: 安全レイヤーを追加（前方衝突検知）
+- [x] `rl_driver.py`: 観測空間の自動検証ログを追加
+- [x] `hardware_bridge.py`: `steer_flip` パラメータを追加
+- [x] `setup_jetson.sh`: Jetson向け環境構築スクリプトを作成
 
 ### Phase 2: テスト作成
 - [ ] `test_sil_integration.py` を作成
-- [ ] `test_safety.py` を作成
+- [x] `test_safety.py` を作成
 - [ ] `calibrate_steering.py` を作成
 
 ### Phase 3: SiL検証（開発PC）

@@ -1,10 +1,18 @@
 # F1TENTH RL Project
 
-このプロジェクトは、F1TENTH車両を強化学習(RL)モデル（Stable Baselines3 PPO）を用いて自律走行させるためのROS2ワークスペースを含んでいます。
+このプロジェクトは、F1TENTH車両を強化学習(RL)モデル（Stable Baselines3 PPO）を用いて自律走行させるためのROS 2ワークスペースです。
+
+## 特徴
+- **可変次元LiDAR入力対応**: モデルの入力次元（108次元など）に合わせて、LiDARデータを動的にダウンサンプリング/パディング可能。
+- **実機対応ハードウェアブリッジ**: `/drive` 指令を PCA9685 経由でステアリングサーボとESCに変換。
+- **Sim-to-Real 対策**: LiDARへのノイズ追加や、アクション（ステアリング）の平滑化 (EMA) を実装済み。
+- **安全設計**: 起動時のESCアーム待機処理、終了時の緊急停止、およびライブラリ未対応時のDRY-RUNモードを搭載。
+
+---
 
 ## ディレクトリ構成
 
-```
+```text
 f1tenth-project/
 ├── ros2_ws/
 │   ├── models/
@@ -12,103 +20,76 @@ f1tenth-project/
 │   ├── src/
 │   │   └── f1tenth_rl/
 │   │       ├── f1tenth_rl/
-│   │       │   ├── rl_driver.py       # LiDAR+Odom → PPO推論 → /drive パブリッシュ
-│   │       │   └── hardware_bridge.py # /drive → PCA9685 (ステアリング/ESC)
+│   │       │   ├── rl_driver.py       # LiDAR+Odom → PPO推論 → /drive
+│   │       │   └── hardware_bridge.py # /drive → PCA9685 (Servo/ESC)
 │   │       └── launch/
-│   │           └── f1tenth_rl.launch.py  # 2ノード同時起動
-│   └── scripts/tests/         # 各種テストスクリプト
-└── jetson-ros2/               # Python仮想環境
+│   │           └── f1tenth_rl.launch.py  # 全ノード起動設定
+│   └── scripts/tests/         # 各種テスト用スクリプト
+└── jetson-ros2/               # Python仮想環境 (venv)
 ```
 
-## ノード構成
+---
 
+## 準備
+
+### 1. 仮想環境の有効化
+ライブラリのインポートエラーを防ぐため、常にこの環境で作業してください。
+```bash
+source ~/f1tenth-project/jetson-ros2/bin/activate
 ```
-/scan (LaserScan) ──┐
-                    ├─▶ rl_driver ──▶ /drive ──▶ hardware_bridge ──▶ PCA9685
-/odom (Odometry) ──┘                             ch0: ステアリングサーボ
-                                                 ch1: ESC / モーター
-```
 
-## 前提条件
-
-- ROS2 (Humble 推奨)
-- Python 3
-- Pythonパッケージ: `rclpy`, `numpy`, `stable_baselines3`
-- ROSパッケージ: `sensor_msgs`, `nav_msgs`, `ackermann_msgs`
-- ハードウェアパッケージ（Jetson実機用）: `adafruit-circuitpython-pca9685`
-
-## インストールとビルド
-
+### 2. ビルド
+仮想環境がアクティブな状態でビルドを行います。
 ```bash
 cd ~/f1tenth-project/ros2_ws
+rm -rf build/ install/ log/  # 初回や環境変更時はクリーン推奨
 colcon build --packages-select f1tenth_rl
 source install/setup.bash
 ```
 
-## 実機走行
-
-### 1. launchで全ノード起動（推奨）
-
+### 3. ハードウェア通信チェック (任意)
+PCA9685と正しく通信できているか確認できます。
 ```bash
-ros2 launch f1tenth_rl f1tenth_rl.launch.py
+python3 src/debug_i2c.py
 ```
 
-モデルパスを変更する場合:
+---
+
+## 実行方法
+
+### 推奨：Launchファイルで一括起動
+実機のLiDARモデルに合わせてパラメータを指定して起動します。
+
 ```bash
-ros2 launch f1tenth_rl f1tenth_rl.launch.py model_path:=/別の/パス/model
+# 例：モデルが108次元LiDAR入力を想定している場合
+ros2 launch f1tenth_rl f1tenth_rl.launch.py \
+    lidar_num_beams:=108 \
+    lidar_downsample_step:=10 \
+    steer_smoothing:=0.5
 ```
 
-### 2. 個別起動
+### 主要な起動パラメータ
 
-```bash
-# ターミナル1: ハードウェアブリッジ（先に起動）
-ros2 run f1tenth_rl hardware_bridge
-
-# ターミナル2: RLドライバ
-ros2 run f1tenth_rl rl_driver
-```
-
-### ハードウェアパラメータ（hardware_bridge）
-
+#### rl_driver (AI推論)
 | パラメータ | デフォルト | 説明 |
 |---|---|---|
-| `steer_ch` | 0 | ステアリングのPCA9685チャンネル |
-| `steer_center` | 4700 | ステアリング中央のduty_cycle |
-| `steer_left` | 3700 | 最大左のduty_cycle |
-| `steer_right` | 5700 | 最大右のduty_cycle |
-| `steer_max_angle` | 0.4 | モデル出力の最大ステア角（rad） |
-| `esc_ch` | 1 | ESCのPCA9685チャンネル |
-| `esc_stop` | 5200 | 停止時のduty_cycle |
-| `esc_forward` | 5800 | 前進時のduty_cycle（固定速度モード） |
-| `fixed_speed_mode` | True | Trueで固定速度、Falseでスケール速度 |
-| `esc_arm_duration` | 3.0 | 起動時のESCアーム待機秒数 |
+| `model_path` | `.../models/model` | 学習済みモデルのパス（.zipなし） |
+| `lidar_num_beams` | 108 | モデルに入力するLiDARの次元数 |
+| `lidar_downsample_step` | 10 | `/scan` トピックの間引き間隔 |
+| `steer_smoothing` | 0.5 | ステアリングのEMA平滑化係数 (0.0=変化なし, 1.0=即時反映) |
 
-パラメータのオーバーライド例:
-```bash
-ros2 run f1tenth_rl hardware_bridge --ros-args -p steer_center:=4600 -p fixed_esc_duty:=5700
-```
+#### hardware_bridge (実機制御)
+| パラメータ | デフォルト | 説明 |
+|---|---|---|
+| `steer_center` | 4700 | 中央位置の duty_cycle |
+| `steer_left` | 3700 | 最大左の duty_cycle |
+| `steer_right` | 5700 | 最大右の duty_cycle |
+| `fixed_speed_mode` | True | Trueで一定速度で走行。FalseでAIの出力を反映 |
+| `fixed_esc_duty` | 5800 | 前進時の一定速度 duty_cycle |
+| `esc_arm_duration` | 3.0 | 起動時のESCロック解除待機時間(秒) |
 
-## トピック
+---
 
-| トピック | 型 | 方向 | 説明 |
-|---|---|---|---|
-| `/scan` | `sensor_msgs/LaserScan` | Subscribe | LiDARデータ（1080点にクロップ/パディング） |
-| `/odom` | `nav_msgs/Odometry` | Subscribe | 車両の速度・状態 |
-| `/drive` | `ackermann_msgs/AckermannDriveStamped` | Pub/Sub | 速度・ステアリング指令 |
-
-## テスト（実機なし）
-
-```bash
-cd ~/f1tenth-project/ros2_ws/scripts/tests
-
-# モデルロード確認
-python3 test.py
-
-# 環境確認
-python3 test-cnviroment.py
-```
-
-`hardware_bridge`はハードウェア未接続時に自動でDRY-RUNモードに切り替わり、ログ出力のみ行います。
-
-
-
+## 開発とテスト
+- **DRY-RUNモード**: 実機（PCA9685等）が接続されていない、またはライブラリが不足している場合、自動的に `[DRY-RUN]` ログを出力する安全モードで動作します。
+- **テストスクリプト**: `src/f1tenth_rl/scripts/tests/` 内に各機能を単体テストするためのスクリプトを用意しています。

@@ -31,6 +31,9 @@ def generate_launch_description():
             'model_path': LaunchConfiguration('model_path'),
             'lidar_num_beams': 108,
             'lidar_downsample_step': 10,
+            'lidar_center_crop': True,
+            'safety_enable':     True,
+            'safety_stop_dist':  0.3,
         }]
     )
 
@@ -46,6 +49,8 @@ def generate_launch_description():
             'steer_left':      3700,
             'steer_right':     5700,
             'steer_max_angle': 0.4,    # rad
+            'steer_bias':      0,
+            'steer_flip':      False,
 
             # ESC (ch1)
             'esc_ch':      1,
