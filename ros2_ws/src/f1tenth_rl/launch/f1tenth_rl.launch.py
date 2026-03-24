@@ -29,6 +29,8 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'model_path': LaunchConfiguration('model_path'),
+            'lidar_num_beams': 108,
+            'lidar_downsample_step': 10,
         }]
     )
 

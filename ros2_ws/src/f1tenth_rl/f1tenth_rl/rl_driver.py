@@ -60,6 +60,10 @@ class RLDriver(Node):
         self.declare_parameter('lidar_noise_std', 0.02)     # LiDARへのガウスノイズ (m)
         self.declare_parameter('steer_smoothing', 0.5)      # 0.0~1.0 (大きいほど新しい値を優先)
         self.declare_parameter('speed_smoothing', 0.8)      # 速度の平滑化
+        
+        # 5. LiDARの前処理パラメータ (可変次元対応)
+        self.declare_parameter('lidar_num_beams', 108)      # モデルに入力するLiDARの次元数
+        self.declare_parameter('lidar_downsample_step', 10) # 間引き間隔
 
         self.last_steer = 0.0
         self.last_speed = 0.0
@@ -85,12 +89,19 @@ class RLDriver(Node):
             neginf=0.0
         )
 
-        # 5. モデル入力サイズに合わせるため、データが少なければパディング、多ければカット
-        TARGET_SIZE = 1080
-        if len(lidar) >= TARGET_SIZE:
-            lidar = lidar[:TARGET_SIZE]
+        # 5. ダウンサンプリングとサイズ調整 (モデル入力を108次元等に合わせる)
+        downsample_step = self.get_parameter('lidar_downsample_step').value
+        target_size = self.get_parameter('lidar_num_beams').value
+
+        # 間引き処理
+        if downsample_step > 1:
+            lidar = lidar[::downsample_step]
+
+        # モデルの入力次元に合わせる
+        if len(lidar) >= target_size:
+            lidar = lidar[:target_size]
         else:
-            padding_size = TARGET_SIZE - len(lidar)
+            padding_size = target_size - len(lidar)
             lidar = np.pad(lidar, (0, padding_size), 'constant', constant_values=(msg.range_max,))
 
         # 6. Sim-to-Real: 観測データへのノイズ追加 (堅牢性の向上)
