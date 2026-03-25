@@ -11,9 +11,11 @@ from launch.substitutions import LaunchConfiguration
 import os
 
 
+from launch.conditions import IfCondition
+from ament_index_python.packages import get_package_share_directory
+
 def generate_launch_description():
     # ─── 設定ファイル (YAML) のパス取得 ───
-    from ament_index_python.packages import get_package_share_directory
     try:
         # インストール済みのパッケージから取得
         config_path = os.path.join(get_package_share_directory('f1tenth_rl'), 'config', 'params.yaml')
@@ -30,6 +32,11 @@ def generate_launch_description():
         'model_path',
         default_value=os.path.join(home_dir, 'projects/jetson-ros2-project/ros2_ws/models/model'),
         description='Path to the trained PPO model (absolute or relative to home)'
+    )
+    
+    rviz_arg = DeclareLaunchArgument(
+        'rviz', default_value='False',
+        description='Launch RViz2 for visualization'
     )
 
     # ─── Nodes ───
@@ -51,9 +58,25 @@ def generate_launch_description():
         output='screen',
         parameters=[config_path]
     )
+    
+    # RViz2 ノード
+    rviz_config_dir = os.path.join(
+        get_package_share_directory('f1tenth_rl'),
+        'rviz', 'f1tenth_rl.rviz'
+    )
+    rviz_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        arguments=['-d', rviz_config_dir],
+        condition=IfCondition(LaunchConfiguration('rviz')),
+        output='screen'
+    )
 
     return LaunchDescription([
         model_path_arg,
+        rviz_arg,
         rl_driver_node,
         hardware_bridge_node,
+        rviz_node
     ])

@@ -17,8 +17,8 @@ source ros2_ws/install/setup.bash
 
 ターミナル 1 で `rl_driver` を起動します：
 ```bash
-# 実際のハードウェアがないため、エラーや警告が出ますが、ロジック自体は動きます
-ros2 launch f1tenth_rl f1tenth_rl.launch.py
+# rviz:=True を指定することで視覚化画面が自動で立ち上がります
+ros2 launch f1tenth_rl f1tenth_rl.launch.py rviz:=True
 ```
 
 ## 3. ROS 2 Bag の再生
