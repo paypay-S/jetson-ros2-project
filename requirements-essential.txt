@@ -1,0 +1,14 @@
+# F1TENTH RL project - Essential Dependencies
+# WSL2 でのテストおよび Jetson 実機での動作に必要な最小構成です。
+
+numpy
+stable-baselines3
+shimmy
+gymnasium
+Adafruit-Blinka
+adafruit-circuitpython-pca9685
+smbus2
+torch
+torchvision
+torchaudio
+pytest

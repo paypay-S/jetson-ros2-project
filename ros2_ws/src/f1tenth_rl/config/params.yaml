@@ -1,0 +1,40 @@
+rl_driver:
+  ros__parameters:
+    # ホームディレクトリからの相対パスで記述 (コード側で ~ と結合)
+    model_path: "projects/jetson-ros2-project/ros2_ws/models/model"
+    lidar_num_beams: 108
+    lidar_downsample_step: 10
+    lidar_center_crop: true
+    safety_enable: true
+    safety_stop_dist: 0.3
+    safety_check_width_percent: 0.15
+    use_sim_to_real: true
+    lidar_noise_std: 0.02
+    steer_smoothing: 0.5
+    speed_smoothing: 0.8
+
+hardware_bridge:
+  ros__parameters:
+    # ステアリングの設定 (実機の個体差に合わせて調整)
+    steer_ch: 0
+    steer_center: 4950
+    steer_left: 3500
+    steer_right: 6000
+    steer_max_angle: 0.4
+    steer_bias: 0
+    steer_flip: false
+
+    # ESC (モーター) 設定
+    esc_ch: 1
+    esc_stop: 5200
+    esc_forward: 5800
+    esc_reverse: 4000
+    speed_flip: true
+
+    # 運転モード
+    fixed_speed_mode: true
+    fixed_esc_duty: 5700
+    speed_threshold: 0.05
+
+    # ESC安全待機
+    esc_arm_duration: 3.0
