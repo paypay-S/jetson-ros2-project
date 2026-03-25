@@ -1,113 +1,99 @@
-# F1TENTH Reinforcement Learning Hardware Integration
+# 🏎️ F1TENTH Jetson ROS 2 Project
 
-このプロジェクトは、F1TENTH 車両を強化学習モデル（SB3 / PPO）を用いて Jetson 実機上で自律走行させるための ROS 2 システムです。
-実機特有のハードウェア制御、安全レイヤー、およびキャリブレーション機能が含まれています。
+![ROS 2](https://img.shields.io/badge/ros2-humble-blue?logo=ros)
+![Python](https://img.shields.io/badge/python-3.10-blue?logo=python)
+[![ROS 2 CI](https://github.com/paypay-S/jetson-ros2-project/actions/workflows/ros2_ci.yml/badge.svg)](https://github.com/paypay-S/jetson-ros2-project/actions/workflows/ros2_ci.yml)
 
-## 🏎️ システム構成
-
-- **rl_driver**: LiDAR / Odometry データを入力とし、AIモデル（PPO）を用いてステアリングと速度を決定します。
-- **hardware_bridge**: ROS 2 の `AckermannDrive` 指令を、PCA9685 経由の PWM 信号に変換し、サーボとESCを制御します。
-- **Safety Layer**: 前方の障害物を検知すると、AIの推論を待たずに即座に「緊急停止」をかけます。
+F1TENTH 車両を強化学習（Stable Baselines3 / PPO）を用いて Jetson 上で自律走行させるための ROS 2 システムです。
+**WSL2 での開発・検証**から、**Jetson 実機でのデプロイ**までを一貫してサポートするように最適化されています。
 
 ---
 
-## 🚀 クイックスタート (Jetson)
+## 🛠️ プロジェクトの構成と役割
 
-### 1. 環境構築
-まずは Jetson 上で必要なライブラリと仮想環境をセットアップします。
+このリポジトリは、以下の 2 つの環境で役割を分担して使用します。
 
+| 環境 | 主な役割 | 実行パッケージ |
+| :--- | :--- | :--- |
+| **WSL2 (PC)** | 開発、コード修正、AI推論のBag検証、RVizによる視覚化 | `f1tenth_rl` (検証用) |
+| **Jetson (実機)** | マッピング（SLAM）、実機走行、PWMハードウェア制御 | `f1tenth_mapping`, `f1tenth_rl` |
+
+---
+
+## 🔄 開発ワークフロー
+
+1.  **Mapping**: Jetson を手動操縦してコースの地図を作成。
+2.  **Sync**: `save_and_sync.sh` で地図を RL プロジェクトへ同期。
+3.  **Train**: [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) で AI モデルを学習。
+4.  **Verify (WSL2)**: 学習済みモデルを `WSL2_TEST_GUIDE.md` の手順で擬似検証。
+5.  **Deploy (Jetson)**: `setup_jetson.sh` で環境を整え、実機走行を開始。
+
+---
+
+## 🚀 セットアップ
+
+### 1. 依存関係のインストール
 ```bash
-# プロジェクトルートで実行
-chmod +x setup_jetson.sh
-./setup_jetson.sh
+# WSL2 / Jetson 共通
+pip install -r requirements-essential.txt
 ```
 
 ### 2. ビルド
-仮想環境を有効にし、ROS 2 ワークスペースをビルドします。
-
 ```bash
-source jetson-ros2/bin/activate
+source /opt/ros/humble/setup.bash  # ROS 2 環境のロード
 cd ros2_ws
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-### 3. ハードウェアの調整 (非常に重要)
-走行前に、ステアリングのセンター位置やESCの動作を確認します。
-**※車体を引きずるのを防ぐため、必ず車体を台に乗せてタイヤを浮かせた状態で実行してください。**
-
-```bash
-python3 scripts/calibrate_steering.py
-```
-- `A` / `D` : ステアリング微調整
-- `W` / `S` : モーター動作確認
-- `Space` : 停止・中央復帰
-- ここで得た数値を、後の Launch パラメータ（`steer_bias` など）に反映させます。
-
 ---
 
-## 🕹️ 走行・操作方法 (ROS 2 Launch)
+## 🕹️ 走行・操作方法
 
-### 実機での自律走行
-以下のコマンドで、AIノードとハードウェアブリッジを同時に起動します。
-
+### 実機での自律走行 (Jetson)
 ```bash
-source jetson-ros2/bin/activate
-source ros2_ws/install/setup.bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py \
-    safety_stop_dist:=0.3 \
     fixed_speed_mode:=True \
     fixed_esc_duty:=5600
 ```
 
-#### 主要なパラメータ
-| パラメータ名 | デフォルト値 | 説明 |
-| :--- | :--- | :--- |
-| `safety_enable` | `True` | 緊急停止機能を有効にするか |
-| `safety_stop_dist` | `0.3` | 緊急停止をかける前方距離 (m) |
-| `fixed_speed_mode` | `True` | 一定速度走行モード (初心者におすすめ) |
-| `fixed_esc_duty` | `5800` | 前進時のパワー (5200が停止) |
-| `steer_flip` | `False` | ステアリングの左右が逆の場合に `True` に設定 |
-| `steer_bias` | `0` | ステアリングのセンターオフセット調整 |
+### WSL2 での視覚化検証 (RViz2)
+過去の走行データを再生しながら、AI の判断を 3D で確認できます。
+```bash
+ros2 launch f1tenth_rl f1tenth_rl.launch.py rviz:=True
+```
+※ 詳細は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/WSL2_TEST_GUIDE.md) を参照。
 
 ---
 
-## 🧪 テストと検証
+## 🧭 マッピングと同期
 
-### 1. ユニットテスト (WSL2 / 実機共通)
-ロジック部分（LiDAR 前処理など）は ROS 2 環境なしでもテスト可能です。
+1. マッピング開始: `./scripts/start_mapping.sh`
+2. 地図の保存と同期: `./scripts/save_and_sync.sh <map_name>`
+
+---
+
+## 🧪 テスト
+
+### ユニットテスト (ロジック検証)
 ```bash
-source jetson-ros2/bin/activate
 pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
 ```
 
-### 2. WSL2 での検証 (ROS 2 Bag 再生)
-実機がなくても、過去の走行データを用いて AI の挙動をテストする方法は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/WSL2_TEST_GUIDE.md) を参照してください。
+## ✨ 主な特徴
 
-### 3. 安全レイヤーの検証
-疑似的に障害物データを流し、システムが正しく「速度 0.0」を出すかを確認します。
+- **環境に依存しない構成**: WSL2 と Jetson の両方で、ホームディレクトリの絶対パスを意識せずに動作します。
+- **パラメータ管理の外部化**: 機体設定や AI パラメータを `params.yaml` で一括管理。コードの変更なしで調整が可能です。
+- **強固な検証体制**: `pytest` によるユニットテストと、GitHub Actions による自動ビルド・テスト環境を完備。
+- **WSL2 検証ファースト**: 実際のマシンがなくても、Bag データを用いた AI 推論の 3D 視覚化検証が可能です。
 
-```bash
-# ターミナル1: AIノード起動
-ros2 run f1tenth_rl rl_driver
+---
 
-# ターミナル2: 検証スクリプト
-python3 scripts/tests/test_safety.py
-```
+## 🛠️ トラブルシューティング
 
-### SiL (Software-in-the-Loop) 統合テスト
-内部パイプラインが正常に繋がっているかを一括チェックします。
-
-```bash
-python3 scripts/tests/test_sil_integration.py
-```
-
-## 🗺️ マップ作成 (f1tenth_mapping)
-
-実機のLiDARを使ってSLAMでマップを生成し、`f1tenth-rl-project` へ自動同期するツールです。
-SSH越しにキーボードで操作することを想定しています（ノーディスプレイ対応）。
-
-### 事前準備
+- **[DRY-RUN] 表示**: I2C アクセス権限またはライブラリ不足。`setup_jetson.sh` を再実行。
+- **緊急停止の頻発**: `config/params.yaml` の `safety_stop_dist` を調整。
+- **RViz2 が表示されない**: WSL2 の GUI 設定を確認してください（Windows 11 以上推奨）。
 
 ```bash
 # slam_toolbox のインストール確認 (Jetson上)
