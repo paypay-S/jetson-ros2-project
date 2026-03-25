@@ -74,7 +74,17 @@ ros2 launch f1tenth_rl f1tenth_rl.launch.py \
 
 ## 🧪 テストと検証
 
-### 安全レイヤーの検証
+### 1. ユニットテスト (WSL2 / 実機共通)
+ロジック部分（LiDAR 前処理など）は ROS 2 環境なしでもテスト可能です。
+```bash
+source jetson-ros2/bin/activate
+pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
+```
+
+### 2. WSL2 での検証 (ROS 2 Bag 再生)
+実機がなくても、過去の走行データを用いて AI の挙動をテストする方法は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/WSL2_TEST_GUIDE.md) を参照してください。
+
+### 3. 安全レイヤーの検証
 疑似的に障害物データを流し、システムが正しく「速度 0.0」を出すかを確認します。
 
 ```bash

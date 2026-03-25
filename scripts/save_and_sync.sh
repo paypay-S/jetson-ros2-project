@@ -22,9 +22,12 @@ ROS2_WS="$PROJECT_ROOT/ros2_ws"
 VENV_ACTIVATE="$PROJECT_ROOT/jetson-ros2/bin/activate"
 
 # マップ保存先ディレクトリ（jetson-ros2-project 内）
-LOCAL_MAPS_DIR="$PROJECT_ROOT/maps"
+# 環境変数 LOCAL_MAPS_DIR があればそれを使用、なければデフォルト
+LOCAL_MAPS_DIR="${LOCAL_MAPS_DIR:-$PROJECT_ROOT/maps}"
+
 # RL プロジェクトへの同期先
-RL_MAPS_DIR="$(dirname "$PROJECT_ROOT")/f1tenth-rl-project/my_maps"
+# 環境変数 RL_MAPS_DIR があればそれを使用、なければデフォルト (../f1tenth-rl-project/my_maps)
+RL_MAPS_DIR="${RL_MAPS_DIR:-$(dirname "$PROJECT_ROOT")/f1tenth-rl-project/my_maps}"
 
 # ─── カラー出力 ──────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
