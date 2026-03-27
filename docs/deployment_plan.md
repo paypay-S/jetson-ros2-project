@@ -16,11 +16,11 @@
 
 ## 🛠️ 最適化・開発ロードマップ
 
-### ステップ 1: 推論の高速化（ONNX Runtime / TensorRT）
+### ステップ 1: 推論の高速化（ONNX Runtime / TensorRT） [完了]
 PyTorch モデルを ONNX 形式へ変換し、Jetson の性能を最大限に引き出します。
-- [ ] PyTorch (`.zip`) モデルから ONNX 形式へのエクスポート
-- [ ] `rl_driver.py` での ONNX Runtime 推論の実装
-- [ ] 1 推論あたりのミリ秒単位での計測と目標設定
+- [x] PyTorch (`.zip`) モデルから ONNX 形式へのエクスポート
+- [x] `rl_driver.py` での ONNX Runtime 推論の実装
+- [x] 1 推論あたりのミリ秒単位での計測と目標設定 (0.025ms達成)
 
 ### ステップ 2: センサーデータのフィルタリング
 LiDAR のノイズが AI の判断に与える影響を最小限にします。

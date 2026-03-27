@@ -1,12 +1,14 @@
 import numpy as np
+import scipy.ndimage
 
 class LidarProcessor:
     """LiDARデータのダウンサンプリング、中心クロップ、ノイズ付与、正規化を行うクラス"""
-    def __init__(self, num_beams=108, downsample_step=10, center_crop=True, noise_std=0.0):
+    def __init__(self, num_beams=108, downsample_step=10, center_crop=True, noise_std=0.0, median_filter_size=5):
         self.num_beams = num_beams
         self.downsample_step = downsample_step
         self.center_crop = center_crop
         self.noise_std = noise_std
+        self.median_filter_size = median_filter_size
 
     def process(self, ranges, range_max):
         # NaN / inf を除去
@@ -25,9 +27,22 @@ class LidarProcessor:
                 start_idx = (n - required_raw) // 2
                 lidar = lidar[start_idx : start_idx + required_raw]
 
-        # 間引き処理
+        # ノイズ付与 (Sim-to-Realのテスト用)
+        if self.noise_std > 0:
+            noise = np.random.normal(0, self.noise_std, size=lidar.shape).astype(np.float32)
+            lidar = np.clip(lidar + noise, 0.0, range_max)
+
+        # 実機のスパイクノイズ対策: メディアンフィルタ
+        if self.median_filter_size > 1:
+            lidar = scipy.ndimage.median_filter(lidar, size=self.median_filter_size)
+
+        # 間引き処理 (f1_env.py の仕様に合わせて min プーリングを使用)
         if self.downsample_step > 1:
-            lidar = lidar[::self.downsample_step]
+            n = len(lidar)
+            # 割り切れる長さに調整
+            truncate_len = (n // self.downsample_step) * self.downsample_step
+            if truncate_len > 0:
+                lidar = lidar[:truncate_len].reshape(-1, self.downsample_step).min(axis=1)
 
         # モデルの入力次元に合わせる
         if len(lidar) >= self.num_beams:
@@ -35,10 +50,5 @@ class LidarProcessor:
         else:
             padding_size = self.num_beams - len(lidar)
             lidar = np.pad(lidar, (0, padding_size), 'constant', constant_values=(range_max,))
-
-        # ノイズ追加 (Sim-to-Real)
-        if self.noise_std > 0:
-            noise = np.random.normal(0, self.noise_std, size=lidar.shape).astype(np.float32)
-            lidar = np.clip(lidar + noise, 0.0, range_max)
 
         return lidar

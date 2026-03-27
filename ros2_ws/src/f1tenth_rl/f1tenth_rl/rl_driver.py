@@ -26,24 +26,36 @@ class RLDriver(Node):
 
         # --- パラメータ宣言 ---
         home_dir = os.path.expanduser("~")
-        df_model = os.path.join(home_dir, 'projects/jetson-ros2-project/ros2_ws/models/model')
+        df_model = os.path.join(home_dir, 'projects/jetson-ros2-project/models/model')
         self.declare_parameter('model_path', df_model)
         
         # LiDAR 前処理
+        # LiDAR 前処理設定
+        # num_beams: 108 (通常) または 216 (ΔLiDAR/Residual使用時) などモデルに合わせる
         self.declare_parameter('lidar_num_beams', 108)
-        self.declare_parameter('lidar_downsample_step', 10)
-        self.declare_parameter('lidar_center_crop', True)
+        self.declare_parameter('lidar_downsample_step', 10) # 1080 -> 108 次元
+        self.declare_parameter('lidar_center_crop', True) # 前方中央を抽出
+        self.declare_parameter('lidar_median_filter_size', 5) # スパイクノイズ除去用フィルタ
         
-        # Sim-to-Real 用
+        # Sim-to-Real / 走行安定化設定
+        # use_sim_to_real: 平滑化(EMA)やスルーレート制限を有効にするフラグ
         self.declare_parameter('use_sim_to_real', True)
-        self.declare_parameter('lidar_noise_std', 0.02)
-        self.declare_parameter('steer_smoothing', 0.5)
-        self.declare_parameter('speed_smoothing', 0.8)
+        self.declare_parameter('lidar_noise_std', 0.02) # 検証用に追加する疑似ノイズ量
         
-        # 安全レイヤー
+        # 指数移動平均(EMA)係数: 小さいほど滑らか(低速反応)、大きいほど即座に反応
+        self.declare_parameter('steer_smoothing', 0.3)
+        self.declare_parameter('speed_smoothing', 0.4)
+        
+        # 1ステップあたりの最大変化量 (クランクや急加減速でのスリップ・機器損傷を防止)
+        self.declare_parameter('max_steer_change_rate', 0.15)
+        self.declare_parameter('max_speed_change_rate', 0.2)
+        # モーターのガタつき防止のための最小速度閾値
+        self.declare_parameter('speed_deadband', 0.05)
+        
+        # 安全レイヤー: 前方中央の特定の幅に障害物があれば即停止
         self.declare_parameter('safety_enable', True)
-        self.declare_parameter('safety_stop_dist', 0.3)
-        self.declare_parameter('safety_check_width_percent', 0.15) # 前方中央の何%をチェックするか
+        self.declare_parameter('safety_stop_dist', 0.3) # 停止距離(m)
+        self.declare_parameter('safety_check_width_percent', 0.15) # 視界の何%を障害物検知に使うか
 
         # --- モデルの読み込み ---
         model_path = self.get_parameter('model_path').get_parameter_value().string_value
@@ -96,8 +108,18 @@ class RLDriver(Node):
             num_beams=self.get_parameter('lidar_num_beams').value,
             downsample_step=self.get_parameter('lidar_downsample_step').value,
             center_crop=self.get_parameter('lidar_center_crop').value,
-            noise_std=self.get_parameter('lidar_noise_std').value if self.get_parameter('use_sim_to_real').value else 0.0
+            noise_std=self.get_parameter('lidar_noise_std').value if self.get_parameter('use_sim_to_real').value else 0.0,
+            median_filter_size=self.get_parameter('lidar_median_filter_size').value
         )
+        
+        # --- 正規化定数 (config.py準拠) ---
+        self.NORMALIZE_OBSERVATIONS = True
+        self.LIDAR_MEAN = 4.869
+        self.LIDAR_STD = 3.577
+        self.LIDAR_RESIDUAL_MEAN = -0.008
+        self.LIDAR_RESIDUAL_STD = 0.084
+        self.VEHICLE_STATE_MEAN = np.array([0.574, -0.010], dtype=np.float32)
+        self.VEHICLE_STATE_STD = np.array([0.096, 0.122], dtype=np.float32)
 
         # 3. ROS 通信
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
@@ -140,6 +162,14 @@ class RLDriver(Node):
         # モデルの入力次元に応じて LiDAR Residual を含めるか判定
         num_beams = self.processor.num_beams
         
+        # 正規化の準備
+        lidar_feat = lidar
+        vehicle_state_feat = np.array([self.speed, self.steer], dtype=np.float32)
+        
+        if self.NORMALIZE_OBSERVATIONS:
+            lidar_feat = (lidar_feat - self.LIDAR_MEAN) / self.LIDAR_STD
+            vehicle_state_feat = (vehicle_state_feat - self.VEHICLE_STATE_MEAN) / self.VEHICLE_STATE_STD
+
         if self.input_dim == (num_beams * 2 + 2):
             # ΔLiDAR (Residual) を含める (EXP-14 形式)
             if self.prev_lidar is None:
@@ -148,10 +178,17 @@ class RLDriver(Node):
             delta_lidar = lidar - self.prev_lidar
             self.prev_lidar = lidar.copy()
             
-            state = np.concatenate([lidar, delta_lidar, np.array([self.speed, self.steer], dtype=np.float32)])
+            delta_feat = delta_lidar
+            if self.NORMALIZE_OBSERVATIONS:
+                delta_feat = (delta_feat - self.LIDAR_RESIDUAL_MEAN) / self.LIDAR_RESIDUAL_STD
+            
+            state = np.concatenate([lidar_feat, delta_feat, vehicle_state_feat])
         else:
             # 通常形式 (110次元など)
-            state = np.concatenate([lidar, np.array([self.speed, self.steer], dtype=np.float32)])
+            state = np.concatenate([lidar_feat, vehicle_state_feat])
+            
+            # prev_lidar を使用しない場合でも更新しておく
+            self.prev_lidar = lidar.copy()
         
         # モデル推論
         if self.model_type == 'onnx':
@@ -168,12 +205,28 @@ class RLDriver(Node):
         pred_speed = float(action[0]) if len(action) >= 2 else (1.0 if len(action) == 1 else 0.0)
         pred_steer = float(action[1]) if len(action) >= 2 else (float(action[0]) if len(action) == 1 else 0.0)
 
-        # 5. Sim-to-Real: EMA によるアクションの平滑化
+        # 5. Sim-to-Real: 物理制約に基づく平滑化と安全処理
         if self.get_parameter('use_sim_to_real').value:
+            # 5-1. 微小速度のカット (Deadband)
+            deadband = self.get_parameter('speed_deadband').value
+            if abs(pred_speed) < deadband:
+                pred_speed = 0.0
+
+            # 5-2. スルーレート制限 (急激な変化の防止)
+            max_s_diff = self.get_parameter('max_steer_change_rate').value
+            max_v_diff = self.get_parameter('max_speed_change_rate').value
+            
+            s_diff = np.clip(pred_steer - self.last_steer, -max_s_diff, max_s_diff)
+            v_diff = np.clip(pred_speed - self.last_speed, -max_v_diff, max_v_diff)
+            
+            pred_steer_clipped = self.last_steer + s_diff
+            pred_speed_clipped = self.last_speed + v_diff
+
+            # 5-3. 指数移動平均 (EMA) による全体的な平滑化
             s_alpha = self.get_parameter('steer_smoothing').value
             v_alpha = self.get_parameter('speed_smoothing').value
-            pred_steer = s_alpha * pred_steer + (1.0 - s_alpha) * self.last_steer
-            pred_speed = v_alpha * pred_speed + (1.0 - v_alpha) * self.last_speed
+            pred_steer = s_alpha * pred_steer_clipped + (1.0 - s_alpha) * self.last_steer
+            pred_speed = v_alpha * pred_speed_clipped + (1.0 - v_alpha) * self.last_speed
             
         self.last_steer, self.last_speed = pred_steer, pred_speed
 

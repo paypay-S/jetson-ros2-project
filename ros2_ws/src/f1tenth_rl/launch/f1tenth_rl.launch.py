@@ -30,13 +30,23 @@ def generate_launch_description():
     home_dir = os.path.expanduser('~')
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value=os.path.join(home_dir, 'projects/jetson-ros2-project/ros2_ws/models/model'),
+        default_value=os.path.join(home_dir, 'projects/jetson-ros2-project/models/model'),
         description='Path to the trained PPO model (absolute or relative to home)'
     )
     
     rviz_arg = DeclareLaunchArgument(
         'rviz', default_value='False',
         description='Launch RViz2 for visualization'
+    )
+
+    fixed_speed_mode_arg = DeclareLaunchArgument(
+        'fixed_speed_mode', default_value='True',
+        description='Use fixed speed mode instead of AI predicted speed'
+    )
+
+    fixed_esc_duty_arg = DeclareLaunchArgument(
+        'fixed_esc_duty', default_value='5600',
+        description='Fixed PWM duty cycle for ESC in fixed speed mode'
     )
 
     # ─── Nodes ───
@@ -56,7 +66,13 @@ def generate_launch_description():
         executable='hardware_bridge',
         name='hardware_bridge',
         output='screen',
-        parameters=[config_path]
+        parameters=[
+            config_path,
+            {
+                'fixed_speed_mode': LaunchConfiguration('fixed_speed_mode'),
+                'fixed_esc_duty': LaunchConfiguration('fixed_esc_duty')
+            }
+        ]
     )
     
     # RViz2 ノード
@@ -76,6 +92,8 @@ def generate_launch_description():
     return LaunchDescription([
         model_path_arg,
         rviz_arg,
+        fixed_speed_mode_arg,
+        fixed_esc_duty_arg,
         rl_driver_node,
         hardware_bridge_node,
         rviz_node

@@ -25,7 +25,7 @@ F1TENTH 車両を強化学習（Stable Baselines3 / PPO）を用いて Jetson �
 1.  **Mapping**: Jetson を手動操縦してコースの地図を作成。
 2.  **Sync**: `save_and_sync.sh` で地図を RL プロジェクトへ同期。
 3.  **Train**: [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) で AI モデルを学習。
-4.  **Verify (WSL2)**: 学習済みモデルを `WSL2_TEST_GUIDE.md` の手順で擬似検証。
+4.  **Verify (WSL2)**: 学習済みモデルを [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/docs/wsl2_test_guide.md) の手順で擬似検証。
 5.  **Deploy (Jetson)**: `setup_jetson.sh` で環境を整え、実機走行を開始。
 
 ---
@@ -53,23 +53,55 @@ source install/setup.bash
 ### 実機での自律走行 (Jetson)
 ```bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py \
+    model_path:=models/ppo_10M_exp14_gradual_speedup.onnx \
     fixed_speed_mode:=True \
     fixed_esc_duty:=5600
 ```
+※ PyTorch (`.zip`) と ONNX (`.onnx`) の両方に対応していますが、推論速度の観点から ONNX の使用を推奨します。
 
 ### WSL2 での視覚化検証 (RViz2)
 過去の走行データを再生しながら、AI の判断を 3D で確認できます。
 ```bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py rviz:=True
 ```
-※ 詳細は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/WSL2_TEST_GUIDE.md) を参照。
+※ 詳細は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/docs/wsl2_test_guide.md) を参照。
 
 ---
 
 ## 🧭 マッピングと同期
 
-1. マッピング開始: `./scripts/start_mapping.sh`
-2. 地図の保存と同期: `./scripts/save_and_sync.sh <map_name>`
+Jetson 実機でコースの地図を作成し、RL プロジェクトに同期する手順です。
+
+### 1. マップ作成の開始
+**ターミナル 1 (Jetson SSH):**
+```bash
+cd ~/projects/jetson-ros2-project
+./scripts/start_mapping.sh
+# → beep×2音で起動完了。操作用の teleop_twist_keyboard 画面が表示されます。
+```
+キーボードで車体を操作して、コースを一周（またはそれ以上）走ります：
+- `u i o`: 前左・前進・前右
+- `j k l`: 左回転・停止・右回転
+- `q / z`: 速度アップ / ダウン
+
+### 2. マップの保存と同期
+**ターミナル 2 (別の SSH ウィンドウ):**
+※ `start_mapping.sh` を**起動したまま**実行してください。
+```bash
+cd ~/projects/jetson-ros2-project
+./scripts/save_and_sync.sh <マップ名>
+
+# 例: 
+./scripts/save_and_sync.sh circuit_warehouse
+# → 長音beep1回で完了。f1tenth-rl-project/my_maps/ に自動コピーされます。
+```
+同期が完了したら、ターミナル 1 で `Ctrl+C` を押してマッピングを終了します。
+
+### 3. 新マップでのトレーニング
+`f1tenth-rl-project/src/config.py` の `MAP_PATH` を更新してトレーニングを開始します。
+```python
+MAP_PATH = os.environ.get("MAP_PATH", "/workspace/my_maps/circuit_warehouse")
+```
 
 ---
 
@@ -82,79 +114,27 @@ pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
 
 ## ✨ 主な特徴
 
-- **環境に依存しない構成**: WSL2 と Jetson の両方で、ホームディレクトリの絶対パスを意識せずに動作します。
-- **パラメータ管理の外部化**: 機体設定や AI パラメータを `params.yaml` で一括管理。コードの変更なしで調整が可能です。
-- **強固な検証体制**: `pytest` によるユニットテストと、GitHub Actions による自動ビルド・テスト環境を完備。
-- **WSL2 検証ファースト**: 実際のマシンがなくても、Bag データを用いた AI 推論の 3D 視覚化検証が可能です。
+- **環境に依存しない構成**: WSL2 と Jetson の両方で動作。
+- **パラメータ管理**: `ros2_ws/src/f1tenth_rl/config/params.yaml` で機体設定や AI パラメータを一括管理。
+- **Sim-to-Real 最適化**: 指数移動平均 (EMA) やスルーレート制限により、実機の振動や急激な負荷を抑制。
+- **WSL2 検証**: 実機がなくても Bag データを用いた AI 推論の 3D 視覚化が可能。
 
 ---
 
 ## 🛠️ トラブルシューティング
 
-- **[DRY-RUN] 表示**: I2C アクセス権限またはライブラリ不足。`setup_jetson.sh` を再実行。
-- **緊急停止の頻発**: `config/params.yaml` の `safety_stop_dist` を調整。
-- **RViz2 が表示されない**: WSL2 の GUI 設定を確認してください（Windows 11 以上推奨）。
-
-```bash
-# slam_toolbox のインストール確認 (Jetson上)
-ros2 pkg list | grep slam_toolbox
-
-# インストールされていない場合
-sudo apt install ros-humble-slam-toolbox ros-humble-nav2-map-server
-```
-
-### パッケージのビルド
-
-```bash
-cd ~/projects/jetson-ros2-project/ros2_ws
-colcon build --packages-select f1tenth_mapping
-source install/setup.bash
-```
-
-### マッピング手順
-
-**ターミナル1 (SSH): マッピング開始**
-```bash
-cd ~/projects/jetson-ros2-project
-./scripts/start_mapping.sh
-# → beep×2音で起動完了。teleop_twist_keyboard の操作画面が表示される。
-```
-
-**ターミナル1: キーボードで車体を手動操縦してコースを走る**
-```
-u i o   ← 前左・前進・前右
-j k l   ← 左回転・停止・右回転
-q / z   ← 速度アップ / ダウン
-```
-
-**ターミナル2 (SSH別ウィンドウ): マップ状態の確認（任意）**
-```bash
-ros2 topic echo /map_metadata
-```
-
-**マッピング完了後: マップ保存 & 同期**
-```bash
-# ターミナル1 で Ctrl+C してから実行
-./scripts/save_and_sync.sh <マップ名>
-
-# 例:
-./scripts/save_and_sync.sh circuit_warehouse
-# → 長音beep1回で完了。f1tenth-rl-project/my_maps/ に自動コピーされる。
-```
-
-### 生成後の使い方
-
-`f1tenth-rl-project/src/config.py` の `MAP_PATH` を更新して新マップでトレーニングを開始：
-
-```python
-MAP_PATH = os.environ.get("MAP_PATH", "/workspace/my_maps/circuit_warehouse")
-```
-
----
-
-## 🛠️ トラブルシューティング
-
-- **[DRY-RUN] と表示される場合**: I2C の権限が不足しているか、ライブラリのパスが通っていません。`sudo chmod 666 /dev/i2c-1` を試すか、`setup_jetson.sh` を再実行してください。
-- **緊急停止が頻発する場合**: 前方 6cm 程度に LiDAR のノイズがある可能性があります。`rl_driver.py` 内の crop 範囲を確認するか、`safety_stop_dist` を調整してください。
-- **slam_toolbox が起動しない場合**: `ros2 topic echo /scan` でLiDARデータが届いているか確認してください。
-- **save_and_sync.sh でマップ保存が失敗する場合**: `start_mapping.sh` が起動中のまま別ターミナルから実行してください（`/map` トピックが必要です）。
+- **[DRY-RUN] と表示される**: 
+    - I2C の権限不足 → `sudo chmod 666 /dev/i2c-1`
+    - ライブラリ不足 → `setup_jetson.sh` を再実行。
+- **緊急停止 (EMERGENCY STOP) が頻発する**: 
+    - LiDAR の前方に配線などのノイズがある可能性があります。`params.yaml` の `safety_stop_dist` を調整するか、`rl_driver.py` の crop インデックスを確認してください。
+- **RViz2 が表示されない (WSL2)**: 
+    - WSL2 の GUI 設定を確認してください（Windows 11 以上推奨）。
+- **save_and_sync.sh で保存に失敗する**: 
+    - `start_mapping.sh` が別ウィンドウで動作しているか確認してください（`/map` トピックが必要です）。
+- **slam_toolbox が起動しない**: 
+    - `ros2 topic echo /scan` で雷探器（LiDAR）のデータが届いているか確認してください。
+    - **Ubuntu 20.04 をお使いの場合**: `ros-humble-*` はインストールできません。代わりに `ros-foxy-*` をインストールしてください。
+      ```bash
+      sudo apt install ros-foxy-slam-toolbox ros-foxy-nav2-map-server
+      ```

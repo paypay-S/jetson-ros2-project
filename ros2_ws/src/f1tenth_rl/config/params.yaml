@@ -1,39 +1,66 @@
 rl_driver:
   ros__parameters:
     # ホームディレクトリからの相対パスで記述 (コード側で ~ と結合)
-    model_path: "projects/jetson-ros2-project/ros2_ws/models/model"
+    model_path: "projects/jetson-ros2-project/models/ppo_10M_exp14_gradual_speedup.onnx"
     lidar_num_beams: 108
     lidar_downsample_step: 10
     lidar_center_crop: true
     safety_enable: true
     safety_stop_dist: 0.3
     safety_check_width_percent: 0.15
+    # --- Sim-to-Real 対策 (実機での滑らかな走行のための設定) ---
     use_sim_to_real: true
     lidar_noise_std: 0.02
-    steer_smoothing: 0.5
-    speed_smoothing: 0.8
+    
+    # 指数移動平均(EMA)による平滑化 (0.0=変化なし, 1.0=即座に最新値を反映)
+    # 値を小さくするほど滑らかになりますが、反応が遅れます。
+    steer_smoothing: 0.3
+    speed_smoothing: 0.4
+    
+    # 1フレーム(推論1回)あたりに許可される最大変化量 (スルーレート制限)
+    # サーボやモーターへの急激な負荷(スパイク)を防ぎます。
+    max_steer_change_rate: 0.15
+    max_speed_change_rate: 0.2
+    
+    # デッドバンド (微小入力のカット)
+    # この値以下の速度指令は 0.0 として扱い、モーターのガタつき(コギング)を防ぎます。
+    speed_deadband: 0.05
+    
+    # LiDARのスパイクノイズを除去するメディアンフィルタのサイズ(奇数)
+    lidar_median_filter_size: 5
 
 hardware_bridge:
   ros__parameters:
-    # ステアリングの設定 (実機の個体差に合わせて調整)
+    # --- ステアリング設定 (個体差に合わせて必須調整) ---
     steer_ch: 0
+    # タイヤが真っ直ぐになるPWM値
     steer_center: 4950
+    # 左一杯に切ったときのPWM値 (限界を超えないように注意)
     steer_left: 3500
+    # 右一杯に切ったときのPWM値
     steer_right: 6000
+    # ROS側の最大ステアリング角度(radian)。シミュレータと合わせる
     steer_max_angle: 0.4
     steer_bias: 0
     steer_flip: false
 
-    # ESC (モーター) 設定
+    # --- モーター(ESC)設定 ---
     esc_ch: 1
+    # モーターが停止する中立PWM値
     esc_stop: 5200
+    # 前進時の最大想定PWM値
     esc_forward: 5800
+    # 後退時(今回は使用しないことが多い)
     esc_reverse: 4000
     speed_flip: true
 
-    # 運転モード
+    # --- 運転モード ---
+    # 推論された速度(Speed)を無視し、ステアリングのみAI操作とするかどうか
     fixed_speed_mode: true
+    # fixed_speed_mode=true の場合に実際に出力される前進PWM値
+    # この値を上げると物理的な速度が上がりますが、クラッシュのリスクが高まります
     fixed_esc_duty: 5700
+    # AIがこれ以下の速度を要求した場合は停止(stop)とする閾値
     speed_threshold: 0.05
 
     # ESC安全待機

@@ -32,14 +32,22 @@ source "$VENV_PATH/bin/activate"
 # Upgrade pip
 pip install --upgrade pip
 
-# Install common libraries
-pip install numpy stable-baselines3 shimmy gym gymnasium
-
-# Install Adafruit libraries for PCA9685
-pip install Adafruit-Blinka adafruit-circuitpython-pca9685
+# Install essential dependencies
+if [ -f "$PROJECT_ROOT/requirements-essential.txt" ]; then
+    echo "Installing from requirements-essential.txt..."
+    # Note: We still handle PyTorch separately below if needed, 
+    # but installing the rest here is cleaner.
+    pip install -r "$PROJECT_ROOT/requirements-essential.txt"
+    # ビルドツールの追加
+    pip install colcon-common-extensions colcon-ros
+else
+    pip install numpy stable-baselines3 shimmy gym gymnasium \
+        Adafruit-Blinka adafruit-circuitpython-pca9685 \
+        onnx onnxruntime pytest \
+        colcon-common-extensions colcon-ros
+fi
 
 # Note: PyTorch on Jetson usually needs a specific wheel from NVIDIA.
-# We check if torch is already there (from system-site-packages) or install a generic one.
 if python3 -c "import torch; print(torch.__version__)" &> /dev/null; then
     echo "PyTorch is already installed."
 else
@@ -53,13 +61,22 @@ cd "$PROJECT_ROOT/ros2_ws"
 # Clean previous builds to ensure consistency
 rm -rf build/ install/ log/
 
-# Source ROS 2 (Humble) - assuming it's in standard location
+# Source ROS 2 (Humble or Foxy or Galactic)
 if [ -f "/opt/ros/humble/setup.bash" ]; then
     source /opt/ros/humble/setup.bash
+    echo "Sourced ROS 2 Humble."
+elif [ -f "/opt/ros/foxy/setup.bash" ]; then
+    source /opt/ros/foxy/setup.bash
+    echo "Sourced ROS 2 Foxy."
+elif [ -f "/opt/ros/galactic/setup.bash" ]; then
+    source /opt/ros/galactic/setup.bash
+    echo "Sourced ROS 2 Galactic."
+else
+    echo "WARN: ROS 2 setup.bash not found in /opt/ros/. Make sure ROS 2 is installed."
 fi
 
 # Build with the venv python
-colcon build --packages-select f1tenth_rl
+colcon build --symlink-install --packages-select f1tenth_rl
 
 # 5. User Group Setup
 echo "[5/5] Checking user groups for I2C access..."
