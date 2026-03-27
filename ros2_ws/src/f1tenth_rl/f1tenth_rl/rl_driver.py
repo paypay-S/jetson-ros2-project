@@ -14,6 +14,7 @@ if os.path.exists(VENV_PATH) and VENV_PATH not in sys.path:
     sys.path.append(VENV_PATH)
 
 from stable_baselines3 import PPO
+import onnxruntime as ort
 
 from .utils import LidarProcessor
 
@@ -50,21 +51,45 @@ class RLDriver(Node):
             model_path = os.path.join(home_dir, model_path)
             
         try:
-            if not os.path.exists(model_path + ".zip") and not os.path.exists(model_path):
-                 self.get_logger().error(f"MODEL NOT FOUND: {model_path}")
-                 self.model = None
+            # 拡張子を確認
+            if model_path.endswith('.onnx'):
+                self.model_type = 'onnx'
+                self.ort_session = ort.InferenceSession(model_path)
+                self.get_logger().info(f"Loaded ONNX model: {model_path}")
+                # 入力次元の確認
+                self.input_dim = self.ort_session.get_inputs()[0].shape[1]
+                self.get_logger().info(f"Model Input Dimension: {self.input_dim}")
             else:
-                self.model = PPO.load(model_path)
-                self.get_logger().info(f"Loaded RL model: {model_path}")
+                self.model_type = 'sb3'
+                if not os.path.exists(model_path + ".zip") and not os.path.exists(model_path):
+                     # ファイルがない場合は .zip を付けて再試行
+                     if os.path.exists(model_path + ".zip"):
+                         model_path += ".zip"
+                     else:
+                         self.get_logger().error(f"MODEL NOT FOUND: {model_path}")
+                         self.model = None
+                
+                if model_path:
+                    self.model = PPO.load(model_path, device="cpu")
+                    self.get_logger().info(f"Loaded SB3 model: {model_path}")
+                    self.input_dim = self.model.observation_space.shape[0]
+                else:
+                    self.model = None
+                    self.input_dim = 0
         except Exception as e:
             self.get_logger().error(f"Model load failed: {e}")
             self.model = None
+            self.model_type = None
+            self.input_dim = 0
 
         # 2. 内部状態
         self.speed = 0.0
         self.steer = 0.0
         self.last_steer = 0.0
         self.last_speed = 0.0
+        
+        # LiDAR Residual (ΔLiDAR) 用
+        self.prev_lidar = None
 
         # LiDAR 前処理クラスの初期化
         self.processor = LidarProcessor(
@@ -111,11 +136,33 @@ class RLDriver(Node):
                 self.publish_drive(0.0, 0.0)
                 return
 
-        # 3. AI 推論用の入力作成 [LiDAR, Speed, Steer]
-        state = np.concatenate([lidar, np.array([self.speed, self.steer], dtype=np.float32)])
+        # 3. AI 推論用の入力作成
+        # モデルの入力次元に応じて LiDAR Residual を含めるか判定
+        num_beams = self.processor.num_beams
+        
+        if self.input_dim == (num_beams * 2 + 2):
+            # ΔLiDAR (Residual) を含める (EXP-14 形式)
+            if self.prev_lidar is None:
+                self.prev_lidar = lidar.copy()
+            
+            delta_lidar = lidar - self.prev_lidar
+            self.prev_lidar = lidar.copy()
+            
+            state = np.concatenate([lidar, delta_lidar, np.array([self.speed, self.steer], dtype=np.float32)])
+        else:
+            # 通常形式 (110次元など)
+            state = np.concatenate([lidar, np.array([self.speed, self.steer], dtype=np.float32)])
         
         # モデル推論
-        action, _ = self.model.predict(state)
+        if self.model_type == 'onnx':
+            # ONNX Runtime 推論 [1, Dim]
+            ort_inputs = {self.ort_session.get_inputs()[0].name: state.reshape(1, -1).astype(np.float32)}
+            ort_outputs = self.ort_session.run(None, ort_inputs)
+            action = ort_outputs[0][0] # [Batch=1, Action=2] -> [2]
+        elif self.model_type == 'sb3' and self.model:
+            action, _ = self.model.predict(state, deterministic=True)
+        else:
+            return
 
         # 4. アクション決定 (モデルの出力次元に合わせて調整)
         pred_speed = float(action[0]) if len(action) >= 2 else (1.0 if len(action) == 1 else 0.0)

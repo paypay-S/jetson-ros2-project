@@ -11,4 +11,6 @@ smbus2
 torch
 torchvision
 torchaudio
+onnx
+onnxruntime
 pytest
