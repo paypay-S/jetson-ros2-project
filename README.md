@@ -23,7 +23,7 @@ F1TENTH 車両を強化学習（Stable Baselines3 / PPO）を用いて Jetson �
 ## 🔄 開発ワークフロー
 
 1.  **Mapping**: Jetson を手動操縦してコースの地図を作成。
-2.  **Sync**: `save_and_sync.sh` で地図を RL プロジェクトへ同期。
+2.  **Sync**: `save_map.sh` で地図を保存し RL プロジェクトへ同期。
 3.  **Train**: [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) で AI モデルを学習。
 4.  **Verify (WSL2)**: 学習済みモデルを [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/docs/wsl2_test_guide.md) の手順で擬似検証。
 5.  **Deploy (Jetson)**: `setup_jetson.sh` で環境を整え、実機走行を開始。
@@ -83,6 +83,11 @@ cd ~/projects/jetson-ros2-project
 - `u i o`: 前左・前進・前右
 - `j k l`: 左回転・停止・右回転
 - `q / z`: 速度アップ / ダウン
+
+**📱 スマホ連携 (リアルタイム地図表示機能):**
+1. スマホやPCのブラウザから `https://studio.foxglove.dev` へアクセスし、`Open Connection` をタップ。
+2. 『Rosbridge』を選択し、URLに `ws://<JetsonのIPアドレス>:9090` を入力して接続。
+3. パネルから `Map` や `LaserScan` (`/map`, `/scan`) を追加すれば現在の地図作成の様子を画面で確認できます。
 
 ### 2. マップの保存
 **ターミナル 2 (別の SSH ウィンドウ):**

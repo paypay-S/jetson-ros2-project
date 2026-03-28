@@ -50,7 +50,7 @@ Jetson（AI走行・マッピング兼用）
 │       ros2 topic echo /map_metadata
 │
 └─ Ctrl+C 後
-   ./scripts/save_and_sync.sh <マップ名>
+   ./scripts/save_map.sh <マップ名>
        ↓
    nav2 map_saver_cli で PGM/YAML 保存
        ↓
@@ -74,7 +74,7 @@ ros2_ws/src/f1tenth_mapping/
 
 scripts/  （プロジェクトルート直下）
 ├── start_mapping.sh                 # マッピング開始スクリプト
-└── save_and_sync.sh                 # マップ保存・同期スクリプト
+└── save_map.sh                      # マップ保存・同期スクリプト
 ```
 
 ---
@@ -178,8 +178,8 @@ MAP_PATH=/workspace/my_maps/circuit_warehouse python3 scripts/train.py
 |---|---|---|
 | `start_mapping.sh` でエラー | ビルド未実施 | `colcon build --packages-select f1tenth_mapping` を実行 |
 | `slam_toolbox` が起動しない | `/scan` が届いていない | `ros2 topic echo /scan` でLiDARデータを確認 |
-| `save_and_sync.sh` が失敗 | `/map` トピックがない | `start_mapping.sh` が起動中の状態で別ターミナルから実行する |
-| `f1tenth-rl-project` への同期が失敗 | パスが異なる | `save_and_sync.sh` 内の `RL_MAPS_DIR` を自環境のパスに合わせる |
+| `save_map.sh` が失敗 | `/map` トピックがない | `start_mapping.sh` が起動中の状態で別ターミナルから実行する |
+| `f1tenth-rl-project` への同期が失敗 | パスが異なる | `save_map.sh` 内の `RL_MAPS_DIR` を自環境のパスに合わせる |
 | beep音が鳴らない | コマンドがない | `sudo apt install beep` または `sudo modprobe pcspkr` を試す |
 
 ---
