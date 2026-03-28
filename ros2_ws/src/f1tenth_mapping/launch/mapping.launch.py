@@ -83,7 +83,7 @@ def generate_launch_description():
         use_sim_time_arg,
         LogInfo(msg='=== F1TENTH マッピング起動 ==='),
         LogInfo(msg='手動走行: teleop_twist_keyboard でキーボード操作'),
-        LogInfo(msg='マップ保存: Ctrl+C 後に ./scripts/save_and_sync.sh <マップ名> を実行'),
+        LogInfo(msg='マップ保存: 起動中に別ターミナルから ./scripts/save_map.sh <マップ名> を実行'),
         slam_node,
         teleop_node,
     ])

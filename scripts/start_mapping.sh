@@ -90,7 +90,7 @@ echo "    m , .  / 後左・後・後右"
 echo "    q/z : 速度アップ/ダウン"
 echo ""
 echo "  マッピング終了: Ctrl+C"
-echo "  マップ保存:     ./scripts/save_and_sync.sh <マップ名>"
+echo "  マップ保存:     (起動中に別ターミナルから) ./scripts/save_map.sh <マップ名>"
 echo "=============================================="
 echo ""
 

@@ -18,6 +18,9 @@ setup(
         # 設定ファイル
         (os.path.join('share', package_name, 'config'),
             glob('config/*.yaml')),
+        # RViz ファイル
+        (os.path.join('share', package_name, 'rviz'),
+            glob('rviz/*.rviz')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -28,6 +31,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'mock_robot = f1tenth_mapping.mock_robot:main',
         ],
     },
 )

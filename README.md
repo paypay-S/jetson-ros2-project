@@ -84,16 +84,16 @@ cd ~/projects/jetson-ros2-project
 - `j k l`: 左回転・停止・右回転
 - `q / z`: 速度アップ / ダウン
 
-### 2. マップの保存と同期
+### 2. マップの保存
 **ターミナル 2 (別の SSH ウィンドウ):**
-※ `start_mapping.sh` を**起動したまま**実行してください。
+※ `start_mapping.sh` を**起動したまま**マッピング完了後: マップ保存
 ```bash
-cd ~/projects/jetson-ros2-project
-./scripts/save_and_sync.sh <マップ名>
+# マッピング（start_mapping.sh）が起動中に別ターミナルから実行
+./scripts/save_map.sh <マップ名>
 
-# 例: 
-./scripts/save_and_sync.sh circuit_warehouse
-# → 長音beep1回で完了。f1tenth-rl-project/my_maps/ に自動コピーされます。
+# 例:
+./scripts/save_map.sh circuit_warehouse
+# → 長音beep1回で完了。maps/ に保存されます。
 ```
 同期が完了したら、ターミナル 1 で `Ctrl+C` を押してマッピングを終了します。
 
@@ -130,8 +130,7 @@ pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
     - LiDAR の前方に配線などのノイズがある可能性があります。`params.yaml` の `safety_stop_dist` を調整するか、`rl_driver.py` の crop インデックスを確認してください。
 - **RViz2 が表示されない (WSL2)**: 
     - WSL2 の GUI 設定を確認してください（Windows 11 以上推奨）。
-- **save_and_sync.sh で保存に失敗する**: 
-    - `start_mapping.sh` が別ウィンドウで動作しているか確認してください（`/map` トピックが必要です）。
+- **save_map.sh でマップ保存が失敗する場合**: `start_mapping.sh` が起動中のまま別ターミナルから実行してください（`/map` トピックが必要です）。
 - **slam_toolbox が起動しない**: 
     - `ros2 topic echo /scan` で雷探器（LiDAR）のデータが届いているか確認してください。
     - **Ubuntu 20.04 をお使いの場合**: `ros-humble-*` はインストールできません。代わりに `ros-foxy-*` をインストールしてください。

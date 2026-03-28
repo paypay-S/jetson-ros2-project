@@ -132,31 +132,30 @@ ros2 topic echo /map_metadata
 # → width, height, resolution が表示されれば地図が生成されています
 ```
 
-**Step 4: マップ保存 & 同期**
+**Step 4: マップ保存**
 
-コースを十分に走ったら `Ctrl+C` でマッピングを終了し、保存スクリプトを実行します。
+コースを十分に走ったら、**マッピングを終了（Ctrl+C）する前**に、別ターミナルから保存スクリプトを実行します。
 
 ```bash
-./scripts/save_and_sync.sh <マップ名>
+./scripts/save_map.sh <マップ名>
 
 # 例:
-./scripts/save_and_sync.sh circuit_warehouse
+./scripts/save_map.sh circuit_warehouse
 ```
 
-`beep 長音 1 回`が鳴れば完了です。以下のファイルが生成・コピーされます：
+`beep 長音 1 回`が鳴れば完了です。以下のファイルが生成されます：
 
 - `maps/circuit_warehouse.pgm` — Jetson ローカル保存
 - `maps/circuit_warehouse.yaml` — Jetson ローカル保存
-- `../f1tenth-rl-project/my_maps/circuit_warehouse.pgm` — RL プロジェクトへ自動コピー
-- `../f1tenth-rl-project/my_maps/circuit_warehouse.yaml` — RL プロジェクトへ自動コピー
 
-> **注意**: 同名のマップが `my_maps/` に存在する場合は、タイムスタンプ付きバックアップが自動作成されます。
+保存が完了したら、マッピング側のターミナルで `Ctrl+C` を押して終了して構いません。
 
 ---
 
 ## 新マップで学習を開始する
 
-`f1tenth-rl-project/src/config.py` の `MAP_PATH` を新マップ名に変更します。
+1. 生成された PGM/YAML ファイルを `f1tenth-rl-project/my_maps/` へ手動でコピーしてください。
+2. `f1tenth-rl-project/src/config.py` の `MAP_PATH` を更新してトレーニングを開始します。
 
 ```python
 # config.py
