@@ -27,7 +27,7 @@ F1TENTH 自律走行システムは以下の2段階で構成されています�
 | SLAMエンジン | `slam_toolbox` (async) | ROS 2 Humble で最も安定。Jetson の処理能力に合わせて非同期モードを採用 |
 | 走行方式 | 手動操作 (teleop_twist_keyboard) | ゆっくり丁寧に走れるため、スキャンマッチング精度が上がる。AI走行では急な挙動で地図がズレるリスクがある |
 | 解像度 | `0.075 m/pixel` | 既存の `my_map.yaml` と統一。シミュレーションと実機の座標スケールを一致させる |
-| UI設計 | ノーディスプレイ対応 (SSH + beep音) | Jetson はディスプレイなしでAI走行を行う想定。RViz2を使わず、操作状態はbeep音でフィードバック |
+| UI設計 | ノーディスプレイ対応 | SSHベースで起動し、ブラウザ (Foxglove) で操作状態と地図を遠隔可視化。スクリプト完了時はビープ音でフィードバック |
 | マップ同期 | 自動コピースクリプト | 生成→学習のワークフローを摩擦なく繋ぎ、ファイルの手動コピーミスを防ぐ |
 
 ---
@@ -43,6 +43,8 @@ Jetson（AI走行・マッピング兼用）
 │       ← /scan (LiDAR) を購読してマップを構築
 │   teleop_twist_keyboard
 │       ← キーボード入力を /cmd_vel に変換
+│   rosbridge_server
+│       ← Websocketホスト (ws://<IP>:9090) でブラウザ可視化
 │
 ├─ [ターミナル2] オプション: マップ状態確認
 │       ros2 topic echo /map_metadata
@@ -82,7 +84,7 @@ scripts/  （プロジェクトルート直下）
 ### 1. 依存パッケージのインストール（Jetson上で1度だけ）
 
 ```bash
-sudo apt install ros-humble-slam-toolbox ros-humble-nav2-map-server
+sudo apt install ros-humble-slam-toolbox ros-humble-nav2-map-server ros-humble-rosbridge-server
 ```
 
 ### 2. パッケージのビルド
@@ -123,14 +125,14 @@ q / z      ← 速度アップ / ダウン
 
 > **ポイント**: ゆっくり・滑らかに走ると地図の精度が上がります。特にコーナーは慎重に。コース1周すると**ループクロージャ**が働き、地図の歪みが自動補正されます。
 
-**Step 3: マップ状態の確認（任意）**
+**Step 3: マップ状態の可視化と確認**
 
-別ターミナルから確認できます。
+SSH の数字だけでなく、手元のブラウザからリアルタイムに地図作成状況を確認できます。
 
-```bash
-ros2 topic echo /map_metadata
-# → width, height, resolution が表示されれば地図が生成されています
-```
+1. 開発用のスマホやPCでブラウザを開き、`https://studio.foxglove.dev` へアクセス。
+2. 『Open Connection』を開き、**『Rosbridge』** を選択。
+3. `ws://<JetsonのIPアドレス>:9090` を入力して接続。
+4. パネルから `Map` や `LaserScan` (`/map`, `/scan` トピック) を追加すると、RViz のようにリアルタイムで地図が見えます。
 
 **Step 4: マップ保存**
 
@@ -182,10 +184,10 @@ MAP_PATH=/workspace/my_maps/circuit_warehouse python3 scripts/train.py
 
 ---
 
-## 今後の拡張案
+## 今後の拡張案（展望）
 
-- **プロポボタン連携**: 受信機の余剰チャンネル信号を Jetson GPIO で読み取り、マップ保存をプロポのスイッチ操作でトリガーする（現状はSSHコマンドで代替）
-- **Rviz2 リモート表示**: 開発PC側で `ROS_DOMAIN_ID` を合わせて Rviz2 を起動し、ネットワーク越しにマップ生成状況を確認する
+- **AI走行でのビープ音連携**: 現在はマッピングのシェルスクリプトで鳴らしているビープ音を、ROS 2ノード (`rl_driver.py`) にも統合。たとえば「安全レイヤーによる緊急停止時」や「モデルの推論ロード完了時」にROS経由でシステムビープを鳴らすことで、一切画面を見なくても機体の状態を把握できるようにする。
+- **プロポボタン連携**: 受信機の余剰チャンネル信号を Jetson GPIO で読み取り、マップ保存や手動/自動走行の切り替えをプロポのスイッチ操作でトリガーする（現状はSSHコマンドで代替）。
 
 ---
 

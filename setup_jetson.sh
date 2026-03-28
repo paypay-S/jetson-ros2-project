@@ -15,7 +15,10 @@ echo "==== Starting F1TENTH Jetson Setup ===="
 echo "[1/5] Installing system dependencies..."
 sudo apt-get update
 sudo apt-get install -y python3-venv python3-pip python3-dev \
-    i2c-tools libi2c-dev python3-setuptools
+    i2c-tools libi2c-dev python3-setuptools \
+    ros-humble-slam-toolbox \
+    ros-humble-nav2-map-server \
+    ros-humble-rosbridge-server
 
 # 2. Virtual Environment Setup
 if [ ! -d "$VENV_PATH" ]; then

@@ -36,7 +36,12 @@ apt-get update && apt-get install -y \
     ros-humble-teleop-twist-keyboard \
     ros-humble-nav2-map-server \
     python3-colcon-common-extensions \
-    xterm
+    xterm || true
+
+# 可視化用の rosbridge をインストール試行
+echo "[Docker] rosbridge (可視化用) をインストール試行中..."
+apt-get install -y ros-humble-rosbridge-server || echo "[WARN] rosbridge のインストールに失敗しました。スマホ連携はスキップされます。"
+
 
 echo "[Docker] f1tenth_mapping パッケージをビルド中..."
 cd /workspace/ros2_ws

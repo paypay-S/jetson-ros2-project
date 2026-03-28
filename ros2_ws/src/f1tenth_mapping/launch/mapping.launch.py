@@ -78,12 +78,41 @@ def generate_launch_description():
         ]
     )
 
+    # ─── rosbridge_server (Optional) ─────────────────────────────────────
+    # パッケージがインストールされている場合のみ起動
+    rosbridge_node = LogInfo(msg='[INFO] rosbridge_server をチェック中...')
+    rosbridge_info = LogInfo(msg=' ')
+    
+    try:
+        get_package_share_directory('rosbridge_server')
+        
+        # rosbridge_serverのLaunchファイルを含める
+        from launch.actions import IncludeLaunchDescription
+        from launch.launch_description_sources import PythonLaunchDescriptionSource
+        
+        rosbridge_launch = os.path.join(
+            get_package_share_directory('rosbridge_server'),
+            'launch',
+            'rosbridge_websocket_launch.xml'
+        )
+        # XML launch file
+        from launch_xml.launch_description_sources import XMLLaunchDescriptionSource
+        rosbridge_node = IncludeLaunchDescription(
+            XMLLaunchDescriptionSource(rosbridge_launch),
+            launch_arguments={'port': '9090'}.items()
+        )
+        rosbridge_info = LogInfo(msg='可視化: スマホ/PCから https://studio.foxglove.dev に接続し ws://<Jetson-IP>:9090 (Rosbridge) に接続')
+    except Exception as e:
+        rosbridge_node = LogInfo(msg=f'[INFO] rosbridge_server が未インストールのため、可視化はスキップします ({str(e)})')
+
     return LaunchDescription([
         scan_topic_arg,
         use_sim_time_arg,
         LogInfo(msg='=== F1TENTH マッピング起動 ==='),
         LogInfo(msg='手動走行: teleop_twist_keyboard でキーボード操作'),
+        rosbridge_info,
         LogInfo(msg='マップ保存: 起動中に別ターミナルから ./scripts/save_map.sh <マップ名> を実行'),
         slam_node,
         teleop_node,
+        rosbridge_node,
     ])
