@@ -131,37 +131,20 @@ class RLDriver(Node):
         
         # --- 正規化定数の読み込み ---
         self.NORMALIZE_OBSERVATIONS = True
-        import json
-        json_path = os.path.splitext(model_path)[0] + '.json'
         
-        stat_params = {}
-        if os.path.exists(json_path):
-            self.get_logger().info(f"Loading normalization metadata from {json_path}")
-            try:
-                with open(json_path, 'r') as f:
-                    stat_params = json.load(f)
-            except Exception as e:
-                self.get_logger().error(f"Failed to load {json_path}: {e}")
-        else:
-            self.get_logger().warn(f"Metadata {json_path} not found. Falling back to params.yaml.")
-            
-        def get_stat(key_json, key_param):
-            if key_json in stat_params:
-                return float(stat_params[key_json])
-            return self.get_parameter(key_param).value
-
-        self.LIDAR_MEAN = get_stat('LIDAR_MEAN', 'obs_lidar_mean')
-        self.LIDAR_STD = get_stat('LIDAR_STD', 'obs_lidar_std')
-        self.LIDAR_RESIDUAL_MEAN = get_stat('LIDAR_RESIDUAL_MEAN', 'obs_lidar_residual_mean')
-        self.LIDAR_RESIDUAL_STD = get_stat('LIDAR_RESIDUAL_STD', 'obs_lidar_residual_std')
+        self.LIDAR_MEAN = self.get_parameter('obs_lidar_mean').value
+        self.LIDAR_STD = self.get_parameter('obs_lidar_std').value
+        self.LIDAR_RESIDUAL_MEAN = self.get_parameter('obs_lidar_residual_mean').value
+        self.LIDAR_RESIDUAL_STD = self.get_parameter('obs_lidar_residual_std').value
         
-        speed_mean = get_stat('VEHICLE_SPEED_MEAN', 'obs_speed_mean')
-        speed_std = get_stat('VEHICLE_SPEED_STD', 'obs_speed_std')
-        steer_mean = get_stat('VEHICLE_STEER_MEAN', 'obs_steer_mean')
-        steer_std = get_stat('VEHICLE_STEER_STD', 'obs_steer_std')
-        
-        self.VEHICLE_STATE_MEAN = np.array([speed_mean, steer_mean], dtype=np.float32)
-        self.VEHICLE_STATE_STD = np.array([speed_std, steer_std], dtype=np.float32)
+        self.VEHICLE_STATE_MEAN = np.array([
+            self.get_parameter('obs_speed_mean').value,
+            self.get_parameter('obs_steer_mean').value
+        ], dtype=np.float32)
+        self.VEHICLE_STATE_STD = np.array([
+            self.get_parameter('obs_speed_std').value,
+            self.get_parameter('obs_steer_std').value
+        ], dtype=np.float32)
 
         # 3. ROS 通信
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)

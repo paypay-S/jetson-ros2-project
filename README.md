@@ -18,15 +18,17 @@ F1TENTH 車両を強化学習（Stable Baselines3 / PPO）を用いて Jetson �
 | **WSL2 (PC)** | 開発、コード修正、AI推論のBag検証、RVizによる視覚化 | `f1tenth_rl` (検証用) |
 | **Jetson (実機)** | マッピング（SLAM）、実機走行、PWMハードウェア制御 | `f1tenth_mapping`, `f1tenth_rl` |
 
----
+## 🔄 実機開発サイクル
 
-## 🔄 開発ワークフロー
+本プロジェクトは、以下の 4 ステップのサイクルで運用することを想定しています。
 
-1.  **Mapping**: Jetson を手動操縦してコースの地図を作成。
-2.  **Sync**: `save_map.sh` で地図を保存し RL プロジェクトへ同期。
-3.  **Train**: [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) で AI モデルを学習。
-4.  **Verify (WSL2)**: 学習済みモデルを [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/docs/wsl2_test_guide.md) の手順で擬似検証。
-5.  **Deploy (Jetson)**: `setup_jetson.sh` で環境を整え、実機走行を開始。
+```mermaid
+graph LR
+    A[<b>1. Mapping</b><br/>実機で地図作成] --> B[<b>2. Train</b><br/>シミュレータ学習]
+    B --> C[<b>3. Verify</b><br/>Bagデータ検証]
+    C --> D[<b>4. Deploy</b><br/>実機で自律走行]
+    D --> A
+```
 
 ---
 
@@ -48,78 +50,64 @@ source install/setup.bash
 
 ---
 
-## 🕹️ 走行・操作方法
+## 🧭 マッピング（コースの地図作成）
 
-### 実機での自律走行 (Jetson)
+実機 LiDAR で SLAM を行い、その結果を学習用マップとしてエクスポートします。
+
+### Step 1: マッピングの開始
+SSH で Jetson に接続し、以下を実行します。
+```bash
+cd ~/projects/jetson-ros2-project
+./scripts/start_mapping.sh
+```
+`beep × 2` が鳴れば起動完了です。ターミナルに手動操作用のキーボード操作画面が表示されます。
+
+### Step 2: Foxglove Studio による可視化（推奨）
+一切画面を繋がなくても、ブラウザから地図作成状況をリアルタイムで確認できます。
+1. `https://studio.foxglove.dev` へアクセスし、`Open Connection` を開く。
+2. 『Rosbridge』を選択し、`ws://<JetsonのIPアドレス>:9090` を入力して接続。
+3. パネルから `Map` (`/map`) や `LaserScan` (`/scan`) を追加。
+
+### Step 3: 手動走行によるスキャン
+キーボードの `u i o` 等で車体を操作し、コースをゆっくり 1〜2 周します。
+> [!TIP]
+> **ループクロージャ**: コースを 1 周してスタート地点に戻ると、スキャンマッチングが働き、地図の歪みが自動で補正されます。
+
+### Step 4: マップの保存と同期
+**マッピングを起動したまま**、別の SSH ターミナルから保存スクリプトを実行します。
+```bash
+./scripts/save_map.sh <マップ名>
+```
+`beep 長音 1 回` が鳴れば、`maps/` への保存と [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) への自動コピーが完了します。
+完了後、元のターミナルで `Ctrl + C` を押して終了してください。
+
+---
+
+## 🏎️ 自律走行 (Inference)
+
+学習済みモデル（`.onnx`）を使って実機を走行させます。
+
+### 1. 正規化パラメータの設定
+学習時の統計量を `params.yaml` に反映します（エディタで直接編集するか、補助スクリプトを使用）。
+```bash
+python3 scripts/calibration.py
+```
+
+### 2. 走行開始
 ```bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py \
-    model_path:=models/ppo_10M_exp14_gradual_speedup.onnx \
+    model_path:=models/ppo_my_model.onnx \
     fixed_speed_mode:=True \
     fixed_esc_duty:=5600
 ```
-※ PyTorch (`.zip`) と ONNX (`.onnx`) の両方に対応していますが、推論速度の観点から ONNX の使用を推奨します。
+※ `fixed_esc_duty` を上げることで最高速度を調整できます（最初は 5400〜5600 程度を推奨）。
 
-> [!IMPORTANT]
-> **正規化パラメータのメタデータについて**: 
-> 走行マップごとに異なる観測値の統計量（`LIDAR_MEAN`や`VEHICLE_SPEED_STD`など）を動的に反映するため、モデルと同名の JSON ファイル（例: `models/ppo_10M_exp14_gradual_speedup.json`）を必ず同じディレクトリに配置してください。
-> JSON ファイル内には以下のような形式でパラメータを記述します。見つからない場合は `params.yaml` のフォールバック値が使用されます。
-> ```json
-> {
->   "LIDAR_MEAN": 4.869,
->   "LIDAR_STD": 3.577,
->   "VEHICLE_SPEED_MEAN": 0.574,
->   "VEHICLE_SPEED_STD": 0.096
-> }
-> ```
-
-### WSL2 での視覚化検証 (RViz2)
+### 3. WSL2 での視覚化検証 (RViz2)
 過去の走行データを再生しながら、AI の判断を 3D で確認できます。
 ```bash
 ros2 launch f1tenth_rl f1tenth_rl.launch.py rviz:=True
 ```
 ※ 詳細は [WSL2_TEST_GUIDE.md](file:///home/yuta775/projects/jetson-ros2-project/docs/wsl2_test_guide.md) を参照。
-
----
-
-## 🧭 マッピングと同期
-
-Jetson 実機でコースの地図を作成し、RL プロジェクトに同期する手順です。
-
-### 1. マップ作成の開始
-**ターミナル 1 (Jetson SSH):**
-```bash
-cd ~/projects/jetson-ros2-project
-./scripts/start_mapping.sh
-# → beep×2音で起動完了。操作用の teleop_twist_keyboard 画面が表示されます。
-```
-キーボードで車体を操作して、コースを一周（またはそれ以上）走ります：
-- `u i o`: 前左・前進・前右
-- `j k l`: 左回転・停止・右回転
-- `q / z`: 速度アップ / ダウン
-
-**📱 スマホ連携 (リアルタイム地図表示機能):**
-1. スマホやPCのブラウザから `https://studio.foxglove.dev` へアクセスし、`Open Connection` をタップ。
-2. 『Rosbridge』を選択し、URLに `ws://<JetsonのIPアドレス>:9090` を入力して接続。
-3. パネルから `Map` や `LaserScan` (`/map`, `/scan`) を追加すれば現在の地図作成の様子を画面で確認できます。
-
-### 2. マップの保存
-**ターミナル 2 (別の SSH ウィンドウ):**
-※ `start_mapping.sh` を**起動したまま**マッピング完了後: マップ保存
-```bash
-# マッピング（start_mapping.sh）が起動中に別ターミナルから実行
-./scripts/save_map.sh <マップ名>
-
-# 例:
-./scripts/save_map.sh circuit_warehouse
-# → 長音beep1回で完了。maps/ に保存されます。
-```
-同期が完了したら、ターミナル 1 で `Ctrl+C` を押してマッピングを終了します。
-
-### 3. 新マップでのトレーニング
-`f1tenth-rl-project/src/config.py` の `MAP_PATH` を更新してトレーニングを開始します。
-```python
-MAP_PATH = os.environ.get("MAP_PATH", "/workspace/my_maps/circuit_warehouse")
-```
 
 ---
 

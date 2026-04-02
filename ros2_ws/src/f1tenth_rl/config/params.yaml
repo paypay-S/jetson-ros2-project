@@ -3,7 +3,8 @@ rl_driver:
     # モデルの相対パス (ワークスペースルート基準)
     model_path: "models/ppo_10M_exp14_gradual_speedup.onnx"
     
-    # --- 正規化パラメータ (JSONがない場合のフォールバック用) ---
+    # --- 観測値の正規化パラメータ (手動設定) ---
+    # 学習時 (config.py) の統計量と一致させる必要があります。
     obs_lidar_mean: 4.869
     obs_lidar_std: 3.577
     obs_lidar_residual_mean: -0.008
