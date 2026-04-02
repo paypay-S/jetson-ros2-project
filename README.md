@@ -59,6 +59,19 @@ ros2 launch f1tenth_rl f1tenth_rl.launch.py \
 ```
 ※ PyTorch (`.zip`) と ONNX (`.onnx`) の両方に対応していますが、推論速度の観点から ONNX の使用を推奨します。
 
+> [!IMPORTANT]
+> **正規化パラメータのメタデータについて**: 
+> 走行マップごとに異なる観測値の統計量（`LIDAR_MEAN`や`VEHICLE_SPEED_STD`など）を動的に反映するため、モデルと同名の JSON ファイル（例: `models/ppo_10M_exp14_gradual_speedup.json`）を必ず同じディレクトリに配置してください。
+> JSON ファイル内には以下のような形式でパラメータを記述します。見つからない場合は `params.yaml` のフォールバック値が使用されます。
+> ```json
+> {
+>   "LIDAR_MEAN": 4.869,
+>   "LIDAR_STD": 3.577,
+>   "VEHICLE_SPEED_MEAN": 0.574,
+>   "VEHICLE_SPEED_STD": 0.096
+> }
+> ```
+
 ### WSL2 での視覚化検証 (RViz2)
 過去の走行データを再生しながら、AI の判断を 3D で確認できます。
 ```bash

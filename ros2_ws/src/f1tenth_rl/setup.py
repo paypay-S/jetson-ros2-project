@@ -21,7 +21,7 @@ setup(
     maintainer='user',
     maintainer_email='user@todo.todo',
     description='RL driver for F1TENTH',
-    license='TODO: License declaration',
+    license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [

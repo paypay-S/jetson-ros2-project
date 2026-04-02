@@ -95,5 +95,18 @@ echo "=============================================="
 echo ""
 
 beep_start
-info "Launch ファイルを起動中..."
-ros2 launch f1tenth_mapping mapping.launch.py
+info "バックグラウンドで Launch ファイル（SLAM・可視化）を起動中..."
+ros2 launch f1tenth_mapping mapping.launch.py &
+LAUNCH_PID=$!
+
+# スクリプト終了時にバックグラウンドのプロセスも停止する
+cleanup() {
+    info "終了します。バックグラウンドプロセスを停止中..."
+    kill $LAUNCH_PID 2>/dev/null || true
+    wait $LAUNCH_PID 2>/dev/null || true
+}
+trap cleanup EXIT
+
+sleep 2
+info "手動操作用ノード (teleop_twist_keyboard) をフォアグラウンドで開始します"
+ros2 run teleop_twist_keyboard teleop_twist_keyboard

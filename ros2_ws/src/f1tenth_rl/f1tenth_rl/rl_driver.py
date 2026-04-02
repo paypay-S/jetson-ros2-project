@@ -7,11 +7,7 @@ from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
 import numpy as np
 
-# 仮想環境のライブラリパスを動的に追加 (WSL2/Jetson 共用)
-home_dir = os.path.expanduser('~')
-VENV_PATH = os.path.join(home_dir, 'projects/jetson-ros2-project/jetson-ros2/lib/python3.10/site-packages')
-if os.path.exists(VENV_PATH) and VENV_PATH not in sys.path:
-    sys.path.append(VENV_PATH)
+
 
 from stable_baselines3 import PPO
 import onnxruntime as ort
@@ -25,9 +21,17 @@ class RLDriver(Node):
         self.get_logger().info("RL Driver node starting...")
 
         # --- パラメータ宣言 ---
-        home_dir = os.path.expanduser("~")
-        df_model = os.path.join(home_dir, 'projects/jetson-ros2-project/models/model')
-        self.declare_parameter('model_path', df_model)
+        self.declare_parameter('model_path', 'models/model')
+        
+        # --- 正規化パラメータ (JSONがない場合のフォールバック用) ---
+        self.declare_parameter('obs_lidar_mean', 4.869)
+        self.declare_parameter('obs_lidar_std', 3.577)
+        self.declare_parameter('obs_lidar_residual_mean', -0.008)
+        self.declare_parameter('obs_lidar_residual_std', 0.084)
+        self.declare_parameter('obs_speed_mean', 0.574)
+        self.declare_parameter('obs_speed_std', 0.096)
+        self.declare_parameter('obs_steer_mean', -0.010)
+        self.declare_parameter('obs_steer_std', 0.122)
         
         # LiDAR 前処理
         # LiDAR 前処理設定
@@ -58,9 +62,22 @@ class RLDriver(Node):
         self.declare_parameter('safety_check_width_percent', 0.15) # 視界の何%を障害物検知に使うか
 
         # --- モデルの読み込み ---
-        model_path = self.get_parameter('model_path').get_parameter_value().string_value
-        if not os.path.isabs(model_path):
-            model_path = os.path.join(home_dir, model_path)
+        model_path_param = self.get_parameter('model_path').get_parameter_value().string_value
+        if model_path_param.startswith("~/"):
+            model_path = os.path.expanduser(model_path_param)
+        elif not os.path.isabs(model_path_param):
+            try:
+                from ament_index_python.packages import get_package_share_directory
+                pkg_share = get_package_share_directory('f1tenth_rl')
+                workspace_root = os.path.abspath(os.path.join(pkg_share, '../../..'))
+                # ROS2 workspace root (e.g. jetson-ros2-project)
+                model_path = os.path.join(workspace_root, model_path_param)
+                if not os.path.exists(os.path.dirname(model_path)):
+                     model_path = os.path.abspath(model_path_param)
+            except Exception:
+                model_path = os.path.abspath(model_path_param)
+        else:
+            model_path = model_path_param
             
         try:
             # 拡張子を確認
@@ -112,14 +129,39 @@ class RLDriver(Node):
             median_filter_size=self.get_parameter('lidar_median_filter_size').value
         )
         
-        # --- 正規化定数 (config.py準拠) ---
+        # --- 正規化定数の読み込み ---
         self.NORMALIZE_OBSERVATIONS = True
-        self.LIDAR_MEAN = 4.869
-        self.LIDAR_STD = 3.577
-        self.LIDAR_RESIDUAL_MEAN = -0.008
-        self.LIDAR_RESIDUAL_STD = 0.084
-        self.VEHICLE_STATE_MEAN = np.array([0.574, -0.010], dtype=np.float32)
-        self.VEHICLE_STATE_STD = np.array([0.096, 0.122], dtype=np.float32)
+        import json
+        json_path = os.path.splitext(model_path)[0] + '.json'
+        
+        stat_params = {}
+        if os.path.exists(json_path):
+            self.get_logger().info(f"Loading normalization metadata from {json_path}")
+            try:
+                with open(json_path, 'r') as f:
+                    stat_params = json.load(f)
+            except Exception as e:
+                self.get_logger().error(f"Failed to load {json_path}: {e}")
+        else:
+            self.get_logger().warn(f"Metadata {json_path} not found. Falling back to params.yaml.")
+            
+        def get_stat(key_json, key_param):
+            if key_json in stat_params:
+                return float(stat_params[key_json])
+            return self.get_parameter(key_param).value
+
+        self.LIDAR_MEAN = get_stat('LIDAR_MEAN', 'obs_lidar_mean')
+        self.LIDAR_STD = get_stat('LIDAR_STD', 'obs_lidar_std')
+        self.LIDAR_RESIDUAL_MEAN = get_stat('LIDAR_RESIDUAL_MEAN', 'obs_lidar_residual_mean')
+        self.LIDAR_RESIDUAL_STD = get_stat('LIDAR_RESIDUAL_STD', 'obs_lidar_residual_std')
+        
+        speed_mean = get_stat('VEHICLE_SPEED_MEAN', 'obs_speed_mean')
+        speed_std = get_stat('VEHICLE_SPEED_STD', 'obs_speed_std')
+        steer_mean = get_stat('VEHICLE_STEER_MEAN', 'obs_steer_mean')
+        steer_std = get_stat('VEHICLE_STEER_STD', 'obs_steer_std')
+        
+        self.VEHICLE_STATE_MEAN = np.array([speed_mean, steer_mean], dtype=np.float32)
+        self.VEHICLE_STATE_STD = np.array([speed_std, steer_std], dtype=np.float32)
 
         # 3. ROS 通信
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)

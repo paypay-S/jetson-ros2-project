@@ -63,20 +63,7 @@ def generate_launch_description():
         ]
     )
 
-    # ─── teleop_twist_keyboard ───────────────────────────────────────────
-    # キーボード入力を /cmd_vel に配信して手動走行を可能にする
-    # 注意: このノードはインタラクティブ入力が必要なため、prefix で別ウィンドウ起動を推奨するが、
-    #       SSH 接続時は同端末でそのまま動作する
-    teleop_node = Node(
-        package='teleop_twist_keyboard',
-        executable='teleop_twist_keyboard',
-        name='teleop_twist_keyboard',
-        output='screen',
-        prefix='xterm -e' if os.environ.get('DISPLAY') else '',
-        remappings=[
-            ('/cmd_vel', '/cmd_vel')
-        ]
-    )
+
 
     # ─── rosbridge_server (Optional) ─────────────────────────────────────
     # パッケージがインストールされている場合のみ起動
@@ -113,6 +100,5 @@ def generate_launch_description():
         rosbridge_info,
         LogInfo(msg='マップ保存: 起動中に別ターミナルから ./scripts/save_map.sh <マップ名> を実行'),
         slam_node,
-        teleop_node,
         rosbridge_node,
     ])
