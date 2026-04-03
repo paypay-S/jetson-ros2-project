@@ -30,7 +30,7 @@ def generate_launch_description():
     home_dir = os.path.expanduser('~')
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value=os.path.join(home_dir, 'projects/jetson-ros2-project/models/model'),
+        default_value=os.path.join(home_dir, 'projects/f1tenth-project/models/model'),
         description='Path to the trained PPO model (absolute or relative to home)'
     )
     
