@@ -61,7 +61,7 @@ log/
 
 # AI/ML & Jetson Specific
 *.engine
-*.onnx
+#*.onnx
 *.weights
 *.weights.*
 *.pth
