@@ -54,13 +54,13 @@ source install/setup.bash
 
 実機 LiDAR で SLAM を行い、その結果を学習用マップとしてエクスポートします。
 
-### Step 1: マッピングの開始
-SSH で Jetson に接続し、以下を実行します。
+### Step 1: マッピングの開始（統合起動）
+SSH で Jetson に接続し、統合起動スクリプトを実行します。これだけで LiDAR、ハードウェア、SLAM が一括で立ち上がります。
 ```bash
-cd ~/projects/jetson-ros2-project
-./scripts/start_mapping.sh
+cd ~/projects/f1tenth-project
+./scripts/unified_start.sh
 ```
-`beep × 2` が鳴れば起動完了です。ターミナルに手動操作用のキーボード操作画面が表示されます。
+約7秒後に「Starting teleop...」と表示されれば準備完了です。同じターミナルでそのままキーボード操作が可能です。
 
 ### Step 2: Foxglove Studio による可視化（推奨）
 一切画面を繋がなくても、ブラウザから地図作成状況をリアルタイムで確認できます。
@@ -73,13 +73,14 @@ cd ~/projects/jetson-ros2-project
 > [!TIP]
 > **ループクロージャ**: コースを 1 周してスタート地点に戻ると、スキャンマッチングが働き、地図の歪みが自動で補正されます。
 
-### Step 4: マップの保存と同期
+### Step 4: マップの保存
 **マッピングを起動したまま**、別の SSH ターミナルから保存スクリプトを実行します。
 ```bash
+cd ~/projects/f1tenth-project
 ./scripts/save_map.sh <マップ名>
 ```
-`beep 長音 1 回` が鳴れば、`maps/` への保存と [f1tenth-rl-project](file:///home/yuta775/projects/f1tenth-rl-project) への自動コピーが完了します。
-完了後、元のターミナルで `Ctrl + C` を押して終了してください。
+`beep 長音 1 回` が鳴れば、`maps/` への保存が完了します。
+完了後、元のターミナルで `Ctrl + C` を一度押すと、バックグラウンドの全プロセスを含めて安全に終了します。
 
 ---
 
@@ -120,10 +121,24 @@ pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
 
 ## ✨ 主な特徴
 
+- **統合起動システム (Unified Bringup)**: LiDAR、ハードウェア制御、SLAM、Rosbridge を 1 コマンドで一括起動。終了時のゾンビプロセス防止機能付き。
 - **環境に依存しない構成**: WSL2 と Jetson の両方で動作。
 - **パラメータ管理**: `ros2_ws/src/f1tenth_rl/config/params.yaml` で機体設定や AI パラメータを一括管理。
 - **Sim-to-Real 最適化**: 指数移動平均 (EMA) やスルーレート制限により、実機の振動や急激な負荷を抑制。
 - **WSL2 検証**: 実機がなくても Bag データを用いた AI 推論の 3D 視覚化が可能。
+
+---
+
+## 🧑‍💻 開発者向け: 統合起動の仕組み
+
+`./scripts/unified_start.sh` および `bringup.launch.py` は以下の構成で動作しています。
+
+- **Python Bridge (`real_bridge.py`)**: 
+  キーボード入力を車体命令（Ackermann）に変換しつつ、走行命令から計算した「疑似オドメトリ (`odom -> base_link`)」の TF を発行します。
+- **Static TF Publisher**: 
+  車体中心から LiDAR までの位置関係 (`base_link -> laser`) を定義し、SLAM が LiDAR の点群を地図上に正しくマッピングできるようにしています。
+- **Process Management**: 
+  Bash の `trap` 機能と `pkill` を組み合わせることで、Ctrl+C 時にバックグラウンドで動いている ROS 2 ノード群を確実に一括停止させます。
 
 ---
 
