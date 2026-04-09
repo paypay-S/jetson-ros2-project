@@ -68,7 +68,7 @@ trap cleanup SIGINT SIGTERM EXIT
 
 # 5. 統合Launchファイルの実行 (バックグラウンド)
 info "Starting environment (LiDAR + Bridge + SLAM) in background..."
-ros2 launch "$PROJECT_ROOT/ros2_ws/src/f1tenth_rl/launch/bringup.launch.py" &
+ros2 launch "$PROJECT_ROOT/ros2_ws/src/f1tenth_rl/launch/bringup.launch.py" "$@" &
 LAUNCH_PID=$!
 
 # 6. キーボード操作ノードの実行 (フォアグラウンド)

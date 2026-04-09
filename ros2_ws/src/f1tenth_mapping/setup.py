@@ -17,7 +17,7 @@ setup(
             glob('launch/*.launch.py')),
         # 設定ファイル
         (os.path.join('share', package_name, 'config'),
-            glob('config/*.yaml')),
+            glob('config/*.yaml') + glob('config/*.lua')),
         # RViz ファイル
         (os.path.join('share', package_name, 'rviz'),
             glob('rviz/*.rviz')),

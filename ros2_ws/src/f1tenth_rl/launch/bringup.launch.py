@@ -3,7 +3,8 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, LogInfo
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.conditions import IfCondition, LaunchConfigurationEquals
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -12,6 +13,11 @@ def generate_launch_description():
         'mode',
         default_value='mapping',
         description='Operation mode: mapping or drive'
+    )
+    slam_arg = DeclareLaunchArgument(
+        'slam',
+        default_value='toolbox',
+        description='SLAM system: toolbox, cartographer, or none'
     )
     
     # --- 1. LIDAR (urg_node2) ---
@@ -51,13 +57,26 @@ def generate_launch_description():
     )
 
     # --- 5. SLAM (mapping mode) ---
-    mapping_launch = IncludeLaunchDescription(
+    # SLAM Toolbox
+    toolbox_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(
                 get_package_share_directory('f1tenth_mapping'),
                 'launch', 'mapping.launch.py'
             )
-        )
+        ),
+        condition=LaunchConfigurationEquals('slam', 'toolbox')
+    )
+
+    # Cartographer
+    carto_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(
+                get_package_share_directory('f1tenth_mapping'),
+                'launch', 'cartographer.launch.py'
+            )
+        ),
+        condition=LaunchConfigurationEquals('slam', 'cartographer')
     )
 
     # --- 6. Foxglove Bridge ---
@@ -70,10 +89,12 @@ def generate_launch_description():
 
     return LaunchDescription([
         mode_arg,
+        slam_arg,
         LogInfo(msg="=== F1TENTH Unified Bringup Starting ==="),
         lidar_launch,
         real_bridge_node,
         hardware_bridge_node,
-        mapping_launch,
+        toolbox_launch,
+        carto_launch,
         foxglove_bridge_node,
     ])
