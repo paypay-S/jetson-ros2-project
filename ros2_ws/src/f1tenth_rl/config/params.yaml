@@ -68,7 +68,7 @@ hardware_bridge:
 
     # --- 運転モード ---
     # 推論された速度(Speed)を無視し、ステアリングのみAI操作とするかどうか
-    fixed_speed_mode: true
+    fixed_speed_mode: false
     # fixed_speed_mode=true の場合に実際に出力される前進PWM値
     # この値を上げると物理的な速度が上がりますが、クラッシュのリスクが高まります
     fixed_esc_duty: 5700

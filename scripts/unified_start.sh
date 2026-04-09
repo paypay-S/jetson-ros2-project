@@ -60,6 +60,7 @@ cleanup() {
     pkill -9 -f hardware_bridge 2>/dev/null || true
     pkill -9 -f async_slam_toolbox 2>/dev/null || true
     pkill -9 -f rosbridge_websocket 2>/dev/null || true
+    pkill -9 -f foxglove_bridge 2>/dev/null || true
     info "Cleanup complete."
     exit 0
 }

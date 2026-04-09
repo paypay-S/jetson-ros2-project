@@ -33,13 +33,8 @@ def generate_launch_description():
         output='screen'
     )
 
-    # --- 3. Static TF (base_link -> laser) ---
-    # SLAMに必要な、車体中心からLiDARまでの位置関係を定義します
-    static_tf_node = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        arguments=['0.11', '0.0', '0.12', '0.0', '0.0', '0.0', 'base_link', 'laser']
-    )
+    # --- 3. Static TF (Moved to real_bridge.py) ---
+    # real_bridge.py 側で odom->base_link と同時に発行するようにしたため、ここでは不要です
 
     # --- 4. Hardware Bridge (Ackermann to PWM) ---
     # params.yaml を読み込む
@@ -65,12 +60,20 @@ def generate_launch_description():
         )
     )
 
+    # --- 6. Foxglove Bridge ---
+    foxglove_bridge_node = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        parameters=[{'port': 8765}]
+    )
+
     return LaunchDescription([
         mode_arg,
         LogInfo(msg="=== F1TENTH Unified Bringup Starting ==="),
         lidar_launch,
         real_bridge_node,
-        static_tf_node,
         hardware_bridge_node,
         mapping_launch,
+        foxglove_bridge_node,
     ])

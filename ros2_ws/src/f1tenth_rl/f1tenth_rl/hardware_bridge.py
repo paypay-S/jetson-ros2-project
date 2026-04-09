@@ -171,11 +171,12 @@ class HardwareBridge(Node):
             else:
                 esc_duty = self.esc_stop
         else:
-            # 将来の拡張: speed (m/s) をduty_cycleにスケール
+            # speed (m/s) を duty_cycle にスケール
+            # マッピングを 0.0-1.0 m/s の範囲に縮小して、キーボード操作の感度を上げる
             if speed >= 0:
-                esc_duty = map_range(speed, 0.0, 3.0, self.esc_stop, self.esc_forward)
+                esc_duty = map_range(speed, 0.0, 1.0, self.esc_stop, self.esc_forward)
             else:
-                esc_duty = map_range(-speed, 0.0, 3.0, self.esc_stop, self.esc_reverse)
+                esc_duty = map_range(-speed, 0.0, 1.0, self.esc_stop, self.esc_reverse)
 
         self.get_logger().debug(
             f'drive: speed={speed:.2f} steer={steer_angle:.3f}rad '
