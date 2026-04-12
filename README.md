@@ -153,7 +153,7 @@ pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
     - WSL2 の GUI 設定を確認してください（Windows 11 以上推奨）。
 - **save_map.sh でマップ保存が失敗する場合**: `start_mapping.sh` が起動中のまま別ターミナルから実行してください（`/map` トピックが必要です）。
 - **slam_toolbox が起動しない**: 
-    - `ros2 topic echo /scan` で雷探器（LiDAR）のデータが届いているか確認してください。
+    - `ros2 topic echo /scan` でLiDARのデータが届いているか確認してください。
     - **Ubuntu 20.04 をお使いの場合**: `ros-humble-*` はインストールできません。代わりに `ros-foxy-*` をインストールしてください。
       ```bash
       sudo apt install ros-foxy-slam-toolbox ros-foxy-nav2-map-server
