@@ -19,7 +19,7 @@ import os
 
 # 仮想環境のライブラリパスを動的に追加 (WSL2/Jetson 共用)
 home_dir = os.path.expanduser('~')
-VENV_PATH = os.path.join(home_dir, 'projects/jetson-ros2-project/jetson-ros2/lib/python3.10/site-packages')
+VENV_PATH = os.path.join(home_dir, 'projects/f1tenth-project/jetson-ros2/lib/python3.10/site-packages')
 if os.path.exists(VENV_PATH) and VENV_PATH not in sys.path:
     sys.path.append(VENV_PATH)
 
