@@ -16,7 +16,7 @@ def generate_launch_description():
     )
     slam_arg = DeclareLaunchArgument(
         'slam',
-        default_value='toolbox',
+        default_value='cartographer',
         description='SLAM system: toolbox, cartographer, or none'
     )
     
