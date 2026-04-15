@@ -53,6 +53,13 @@ ros2_ws/install/
 install/
 log/
 
+# ROS 2 & Python
+
+# TF logs
+frames_*.gv
+frames_*.pdf
+
+
 # IDEs
 .vscode/
 .idea/
