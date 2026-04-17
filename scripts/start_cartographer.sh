@@ -21,6 +21,10 @@ info() { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
+# セッションフォルダ名（今日の日付と時刻）の生成
+export SESSION_ID="session_$(date +'%m%d_%H%M%S')"
+info "Current Session: $SESSION_ID"
+
 # 0. 徹底的な掃除
 info "Performing deep cleanup..."
 pkill -9 -f cartographer_node 2>/dev/null || true
@@ -94,9 +98,9 @@ if [ "$SCAN_DETECTED" = false ]; then
     error "LiDAR is NOT publishing data. Please check physical connection and IP."
 fi
 
-# 6. キーボード操作プログラムの開始
-info "Starting teleop keyboard control..."
-ros2 run teleop_twist_keyboard teleop_twist_keyboard || true
+# 6. 高機能テレオプ & マップマネージャーの開始
+info "Starting high-performance teleop & map manager..."
+python3 "$PROJECT_ROOT/scripts/teleop_map_manager.py" || true
 
 # 終了処理
 cleanup
