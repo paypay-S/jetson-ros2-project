@@ -114,12 +114,8 @@ def save_map_sequence(node, num):
         except subprocess.TimeoutExpired:
             node.get_logger().error("map_saver_cli TIMEOUT expired. Map image might be incomplete.")
 
-        # 3. Reset SLAM (Always try to reset even if save failed)
-        node.get_logger().info("3/3: Resetting SLAM nodes...")
-        subprocess.run("pkill -9 -f cartographer_node", shell=True)
-        subprocess.run("pkill -9 -f occupancy_grid_node", shell=True)
-        
-        node.get_logger().info("\033[1;32m[MANAGER] DONE! Map processing finished successfully.\033[0m")
+        # 3. Continue SLAM (No reset)
+        node.get_logger().info("\033[1;32m[MANAGER] DONE! Map saved. SLAM is STILL RUNNING.\033[0m")
         node.get_logger().info("-" * 40)
 
     except Exception as e:
@@ -129,7 +125,7 @@ def save_map_sequence(node, num):
         with save_lock:
             is_saving = False
             print("\n" + "="*50)
-            print("\033[1;32m   [READY] SLAM RESET COMPLETE! START MAPPING NOW!   \033[0m")
+            print("\033[1;32m   [READY] SAVE COMPLETE! CONTINUING SLAM...   \033[0m")
             print("="*50 + "\n")
             print("Operation: WASD/Arrows to drive, 1-9 to save again.")
 

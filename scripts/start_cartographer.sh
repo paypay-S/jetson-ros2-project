@@ -72,31 +72,60 @@ LAUNCH_PID=$!
 
 # 4. LiDAR の状態監視とアクティベート
 info "Waiting for LiDAR node to appear..."
+LIDAR_ACTIVE=false
 for i in {1..15}; do
     if ros2 node list | grep -q "/urg_node2"; then
-        info "LiDAR node detected. Attempting to activate..."
-        ros2 lifecycle set /urg_node2 configure 2>/dev/null || true
-        ros2 lifecycle set /urg_node2 activate 2>/dev/null || true
-        break
+        info "LiDAR node detected. Checking lifecycle state..."
+        
+        CURRENT_STATE=$(ros2 lifecycle get /urg_node2 2>/dev/null || echo "unknown")
+        if [[ "$CURRENT_STATE" == "unconfigured" ]]; then
+            info "Configuring LiDAR..."
+            ros2 lifecycle set /urg_node2 configure >/dev/null 2>&1 || true
+            sleep 1
+        fi
+        
+        CURRENT_STATE=$(ros2 lifecycle get /urg_node2 2>/dev/null || echo "unknown")
+        if [[ "$CURRENT_STATE" == "inactive" ]]; then
+            info "Activating LiDAR..."
+            ros2 lifecycle set /urg_node2 activate >/dev/null 2>&1 || true
+            sleep 1
+        fi
+
+        # 最終確認
+        FINAL_STATE=$(ros2 lifecycle get /urg_node2 2>/dev/null || echo "unknown")
+        if [[ "$FINAL_STATE" == *"active"* ]]; then
+            info "LiDAR is now ACTIVE."
+            LIDAR_ACTIVE=true
+            break
+        fi
     fi
     sleep 1
 done
 
+if [ "$LIDAR_ACTIVE" = false ]; then
+    warn "LiDAR node did not reach ACTIVE state, but continuing to check topic..."
+fi
+
 # 5. /scan トピックの受信確認
 info "Checking for LiDAR data (/scan)..."
 SCAN_DETECTED=false
-for i in {1..10}; do
-    if timeout 2s ros2 topic echo /scan --count 1 >/dev/null 2>&1; then
+for i in {1..15}; do
+    # LiDARドライバは通常 Best Effort QoS でパブリッシュするため、明示的に指定して確認する
+    # Discovery遅延も考慮し、timeout 3s を維持
+    if timeout 3s ros2 topic echo /scan --count 1 --qos-reliability best_effort >/dev/null 2>&1; then
         info "LiDAR data confirmed! (Topic /scan is active)"
         SCAN_DETECTED=true
         break
     fi
-    warn "Waiting for /scan data... (Attempt $i/10)"
+    warn "Waiting for /scan data... (Attempt $i/15)"
+    sleep 1
 done
 
 if [ "$SCAN_DETECTED" = false ]; then
-    error "LiDAR is NOT publishing data. Please check physical connection and IP."
+    warn "LiDAR topic check timed out. However, if SLAM is running locally, it may still be receiving data."
+    warn "Please check Foxglove Studio to verify if scan data is visualized."
 fi
+
 
 # 6. 高機能テレオプ & マップマネージャーの開始
 info "Starting high-performance teleop & map manager..."

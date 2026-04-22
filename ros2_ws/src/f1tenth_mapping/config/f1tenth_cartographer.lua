@@ -3,6 +3,7 @@ include "trajectory_builder.lua"
 
 -- 1. まず各ビルダーの設定を書き換える
 MAP_BUILDER.use_trajectory_builder_2d = true
+MAP_BUILDER.num_background_threads = 6
 
 TRAJECTORY_BUILDER_2D.use_imu_data = false
 TRAJECTORY_BUILDER_2D.min_range = 0.1

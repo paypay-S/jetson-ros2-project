@@ -9,6 +9,8 @@ class LidarProcessor:
         self.center_crop = center_crop
         self.noise_std = noise_std
         self.median_filter_size = median_filter_size
+        # 実機の車体反射(ノイズ)を無視する最小距離
+        self.min_valid_range = 0.05 
 
     def process(self, ranges, range_max):
         # NaN / inf を除去
@@ -18,6 +20,8 @@ class LidarProcessor:
             posinf=range_max,
             neginf=0.0
         )
+        # 極端に近いノイズ (車体反射) は最大距離に置き換えて無視する
+        lidar[lidar < self.min_valid_range] = range_max
 
         # 中心クロップ (前方中心を基準に取り出す)
         if self.center_crop:

@@ -1,7 +1,7 @@
-image: testmap-0416.pgm
+image: map_4_0417_171222.pgm
 mode: trinary
 resolution: 0.05
-origin: [-0.55, -0.85, 0]
+origin: [-3.55, -6.3, 0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.25

@@ -5,18 +5,20 @@ rl_driver:
     
     # --- 観測値の正規化パラメータ (手動設定) ---
     # 学習時 (config.py) の統計量と一致させる必要があります。
-    obs_lidar_mean: 4.869
-    obs_lidar_std: 3.577
-    obs_lidar_residual_mean: -0.008
-    obs_lidar_residual_std: 0.084
-    obs_speed_mean: 0.574
-    obs_speed_std: 0.096
-    obs_steer_mean: -0.010
-    obs_steer_std: 0.122
+    obs_lidar_mean: 26.880
+    obs_lidar_std: 8.864
+    obs_lidar_residual_mean: 0.0
+    obs_lidar_residual_std: 1.0
+    obs_speed_mean: 0.424
+    obs_speed_std: 0.066
+    obs_steer_mean: -0.008
+    obs_steer_std: 0.127
     
-    lidar_num_beams: 108
-    lidar_downsample_step: 10
+    lidar_num_beams: 162
+    lidar_downsample_step: 5
+    frame_stack: 4
     lidar_center_crop: true
+    training_range_max: 30.0
     safety_enable: true
     safety_stop_dist: 0.3
     safety_check_width_percent: 0.15

@@ -6,6 +6,7 @@ from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import Odometry
 from ackermann_msgs.msg import AckermannDriveStamped
 import numpy as np
+from collections import deque
 
 
 
@@ -60,8 +61,15 @@ class RLDriver(Node):
         self.declare_parameter('safety_enable', True)
         self.declare_parameter('safety_stop_dist', 0.3) # 停止距離(m)
         self.declare_parameter('safety_check_width_percent', 0.15) # 視界の何%を障害物検知に使うか
+        self.declare_parameter('frame_stack', 4) # フレームスタック数
+        self.declare_parameter('training_range_max', 30.0) # 学習時の最大距離
 
-        # --- モデルの読み込み ---
+        # --- モデルの読み込みの準備 ---
+        self.model = None
+        self.ort_session = None
+        self.model_type = None
+        self.input_dim = 0
+
         model_path_param = self.get_parameter('model_path').get_parameter_value().string_value
         if model_path_param.startswith("~/"):
             model_path = os.path.expanduser(model_path_param)
@@ -146,6 +154,12 @@ class RLDriver(Node):
             self.get_parameter('obs_steer_std').value
         ], dtype=np.float32)
 
+        # Frame Stacking 用のバッファ初期化
+        self.frame_stack_size = self.get_parameter('frame_stack').value
+        self.obs_buffer = deque(maxlen=self.frame_stack_size)
+
+        # 3. ROS 通信
+
         # 3. ROS 通信
         self.scan_sub = self.create_subscription(LaserScan, "/scan", self.scan_callback, 10)
         self.odom_sub = self.create_subscription(Odometry, "/odom", self.odom_callback, 10)
@@ -156,11 +170,17 @@ class RLDriver(Node):
         self.steer = msg.twist.twist.angular.z
 
     def scan_callback(self, msg):
-        if self.model is None:
+        if self.model_type is None:
             return
 
         # 1. LiDAR 前処理 (Processor に委譲)
         lidar = self.processor.process(msg.ranges, msg.range_max)
+
+        # 【デバッグ】スキャン統計情報を定期的に出力
+        if not hasattr(self, '_scan_count'): self._scan_count = 0
+        self._scan_count += 1
+        if self._scan_count % 20 == 0:
+            self.get_logger().info(f"LiDAR Stats: min={np.min(lidar):.2f}m, max={np.max(lidar):.2f}m, mean={np.mean(lidar):.2f}m")
 
         # 2. 安全レイヤー (前方障害物検知)
         if self.get_parameter('safety_enable').value:
@@ -176,44 +196,39 @@ class RLDriver(Node):
             start_idx = max(0, mid - width)
             end_idx = min(self.processor.num_beams, mid + width)
             
-            front_min = np.min(lidar[start_idx : end_idx])
+            check_area = lidar[start_idx : end_idx]
+            front_min = np.min(check_area)
             
             if front_min < stop_dist:
-                self.get_logger().warn(f"EMERGENCY STOP! Obj at {front_min:.2f}m")
+                min_idx = np.argmin(check_area) + start_idx
+                self.get_logger().warn(f"EMERGENCY STOP! Obj at {front_min:.2f}m (Index: {min_idx})")
                 self.publish_drive(0.0, 0.0)
                 return
 
         # 3. AI 推論用の入力作成
-        # モデルの入力次元に応じて LiDAR Residual を含めるか判定
-        num_beams = self.processor.num_beams
-        
         # 正規化の準備
-        lidar_feat = lidar
+        lidar_feat = lidar.astype(np.float32)
         vehicle_state_feat = np.array([self.speed, self.steer], dtype=np.float32)
         
         if self.NORMALIZE_OBSERVATIONS:
             lidar_feat = (lidar_feat - self.LIDAR_MEAN) / self.LIDAR_STD
             vehicle_state_feat = (vehicle_state_feat - self.VEHICLE_STATE_MEAN) / self.VEHICLE_STATE_STD
 
-        if self.input_dim == (num_beams * 2 + 2):
-            # ΔLiDAR (Residual) を含める (EXP-14 形式)
-            if self.prev_lidar is None:
-                self.prev_lidar = lidar.copy()
+        # 現在のフレームの観測ベクトルを作成 (164次元など)
+        current_obs = np.concatenate([lidar_feat, vehicle_state_feat])
+        
+        # バッファに追加
+        self.obs_buffer.append(current_obs)
+        
+        # バッファがまだ足りない場合は最初のフレームで埋める
+        while len(self.obs_buffer) < self.frame_stack_size:
+            self.obs_buffer.appendleft(current_obs)
             
-            delta_lidar = lidar - self.prev_lidar
-            self.prev_lidar = lidar.copy()
-            
-            delta_feat = delta_lidar
-            if self.NORMALIZE_OBSERVATIONS:
-                delta_feat = (delta_feat - self.LIDAR_RESIDUAL_MEAN) / self.LIDAR_RESIDUAL_STD
-            
-            state = np.concatenate([lidar_feat, delta_feat, vehicle_state_feat])
-        else:
-            # 通常形式 (110次元など)
-            state = np.concatenate([lidar_feat, vehicle_state_feat])
-            
-            # prev_lidar を使用しない場合でも更新しておく
-            self.prev_lidar = lidar.copy()
+        # 全フレームを結合 (656次元など)
+        state = np.concatenate(list(self.obs_buffer))
+        
+        # prev_lidar も一応更新
+        self.prev_lidar = lidar.copy()
         
         # モデル推論
         if self.model_type == 'onnx':
