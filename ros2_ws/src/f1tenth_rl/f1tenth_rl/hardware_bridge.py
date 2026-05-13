@@ -3,206 +3,210 @@ hardware_bridge.py
 
 /drive (AckermannDriveStamped) を受け取り、
 PCA9685経由でステアリングサーボとESCを制御するROS2ノード。
-
-チャンネル割り当て:
-  ch0: ステアリングサーボ (center=4700, left=3700, right=5700)
-  ch1: ESC/モーター      (stop=5200, forward=5800, reverse=4000)
 """
 
 import rclpy
 from rclpy.node import Node
 from ackermann_msgs.msg import AckermannDriveStamped
-import math
 import time
 import sys
 import os
+from typing import Optional
 
 # 仮想環境のライブラリパスを動的に追加 (WSL2/Jetson 共用)
-home_dir = os.path.expanduser('~')
-VENV_PATH = os.path.join(home_dir, 'projects/f1tenth-project/jetson-ros2/lib/python3.10/site-packages')
-if os.path.exists(VENV_PATH) and VENV_PATH not in sys.path:
-    sys.path.append(VENV_PATH)
+def setup_venv_path():
+    home_dir = os.path.expanduser('~')
+    venv_path = os.path.join(home_dir, 'projects/f1tenth-project/jetson-ros2/lib/python3.10/site-packages')
+    if os.path.exists(venv_path) and venv_path not in sys.path:
+        sys.path.append(venv_path)
 
-HW_AVAILABLE = False
-IMPORT_ERROR_MSG = ""
+setup_venv_path()
+
+# ハードウェアライブラリのインポート
 try:
     import board
     import busio
     from adafruit_pca9685 import PCA9685
     HW_AVAILABLE = True
+    IMPORT_ERROR_MSG = ""
 except Exception as e:
+    HW_AVAILABLE = False
     IMPORT_ERROR_MSG = str(e)
 
 
-def clamp(value, min_val, max_val):
-    return max(min_val, min(max_val, value))
+class DriveMapper:
+    """
+    Ackermann指令値をサーボ/ESCのPWMデューティサイクルに変換するクラス。
+    """
+    def __init__(self, 
+                 steer_center: int, steer_left: int, steer_right: int, steer_max_rad: float, steer_bias: int, steer_flip: bool,
+                 esc_stop: int, esc_forward: int, esc_reverse: int, speed_flip: bool,
+                 fixed_speed_mode: bool, fixed_esc_duty: int, speed_threshold: float):
+        self.steer_center = steer_center
+        self.steer_left = steer_left
+        self.steer_right = steer_right
+        self.steer_max_rad = steer_max_rad
+        self.steer_bias = steer_bias
+        self.steer_flip = steer_flip
+        
+        self.esc_stop = esc_stop
+        self.esc_forward = esc_forward
+        self.esc_reverse = esc_reverse
+        self.speed_flip = speed_flip
+        
+        self.fixed_speed_mode = fixed_speed_mode
+        self.fixed_esc_duty = fixed_esc_duty
+        self.speed_threshold = speed_threshold
 
+    @staticmethod
+    def clamp(value: float, min_val: float, max_val: float) -> float:
+        return max(min_val, min(max_val, value))
 
-def map_range(value, in_min, in_max, out_min, out_max):
-    """線形マッピング"""
-    if in_max == in_min:
-        return out_min
-    ratio = (value - in_min) / (in_max - in_min)
-    ratio = clamp(ratio, 0.0, 1.0)
-    return int(out_min + ratio * (out_max - out_min))
+    @staticmethod
+    def map_range(value: float, in_min: float, in_max: float, out_min: float, out_max: float) -> int:
+        if in_max == in_min:
+            return int(out_min)
+        ratio = (value - in_min) / (in_max - in_min)
+        ratio = DriveMapper.clamp(ratio, 0.0, 1.0)
+        return int(out_min + ratio * (out_max - out_min))
 
-
-class HardwareBridge(Node):
-
-    def __init__(self):
-        super().__init__('hardware_bridge')
-
-        # ─── パラメータ宣言 ───────────────────────────────────────────
-        # ステアリング (ch0)
-        self.declare_parameter('steer_ch', 0)
-        self.declare_parameter('steer_center', 4700)
-        self.declare_parameter('steer_left',   3700)   # steering_angle > 0 (左)
-        self.declare_parameter('steer_right',  5700)   # steering_angle < 0 (右)
-        self.declare_parameter('steer_max_angle', 0.4)  # rad, モデル出力の最大ステア角
-        self.declare_parameter('steer_bias', 0)         # ステアリングのセンターオフセット調整 (duty_cycle単位)
-        self.declare_parameter('steer_flip', False)     # ステアリングの正負を反転させるか
-
-        # ESC (ch1)
-        self.declare_parameter('esc_ch', 1)
-        self.declare_parameter('esc_stop',    5200)
-        self.declare_parameter('esc_forward', 5800)
-        self.declare_parameter('esc_reverse', 4000)
-        self.declare_parameter('speed_flip', False)     # スロットルの正負を反転させるか
-
-        # 固定走行速度モード
-        self.declare_parameter('fixed_speed_mode', True)
-        self.declare_parameter('fixed_esc_duty', 5800)   # 前進時のduty_cycle
-        self.declare_parameter('speed_threshold', 0.05)  # これ以上のspeedで前進
-
-        # ESCアーム待機時間 (秒)
-        self.declare_parameter('esc_arm_duration', 3.0)
-
-        # ─── パラメータ取得 ───────────────────────────────────────────
-        self.steer_ch      = self.get_parameter('steer_ch').value
-        self.steer_center  = self.get_parameter('steer_center').value
-        self.steer_left    = self.get_parameter('steer_left').value
-        self.steer_right   = self.get_parameter('steer_right').value
-        self.steer_max_rad = self.get_parameter('steer_max_angle').value
-        self.steer_bias    = self.get_parameter('steer_bias').value
-        self.steer_flip    = self.get_parameter('steer_flip').value
-
-        self.esc_ch      = self.get_parameter('esc_ch').value
-        self.esc_stop    = self.get_parameter('esc_stop').value
-        self.esc_forward = self.get_parameter('esc_forward').value
-        self.esc_reverse = self.get_parameter('esc_reverse').value
-
-        self.fixed_speed_mode = self.get_parameter('fixed_speed_mode').value
-        self.fixed_esc_duty   = self.get_parameter('fixed_esc_duty').value
-        self.speed_threshold  = self.get_parameter('speed_threshold').value
-        self.esc_arm_duration = self.get_parameter('esc_arm_duration').value
-        self.speed_flip       = self.get_parameter('speed_flip').value
-
-        # ─── PCA9685 初期化 ──────────────────────────────────────────
-        self.pca = None
-        if HW_AVAILABLE:
-            try:
-                i2c = busio.I2C(board.SCL, board.SDA)
-                self.pca = PCA9685(i2c, address=0x40)
-                self.pca.frequency = 50
-                self.get_logger().info('PCA9685 initialized')
-
-                # ESCアーム: STOPを送って待機
-                self.get_logger().info(
-                    f'ESC arming: sending STOP ({self.esc_stop}) for {self.esc_arm_duration}s ...'
-                )
-                self.pca.channels[self.steer_ch].duty_cycle = self.steer_center
-                self.pca.channels[self.esc_ch].duty_cycle = self.esc_stop
-                time.sleep(self.esc_arm_duration)
-                self.get_logger().info('ESC armed. Ready to drive.')
-
-            except Exception as e:
-                self.get_logger().error(f'Failed to initialize PCA9685: {e}')
-                self.pca = None
-        else:
-            self.get_logger().warn(
-                f'Hardware libraries not available. REASON: {IMPORT_ERROR_MSG}'
-            )
-            self.get_logger().warn(
-                'Running in DRY-RUN mode (no hardware output).'
-            )
-
-        # ─── サブスクライバ ──────────────────────────────────────────
-        self.drive_sub = self.create_subscription(
-            AckermannDriveStamped,
-            '/drive',
-            self.drive_callback,
-            10
-        )
-        self.get_logger().info('hardware_bridge node started. Subscribing to /drive ...')
-
-    # ─── コールバック ────────────────────────────────────────────────
-    def drive_callback(self, msg):
-        speed        = msg.drive.speed
-        steer_angle  = msg.drive.steering_angle  # rad, 正=左, 負=右
-
-        # ── スロットル反転の適用 ──
+    def map_drive(self, speed: float, steer_angle: float) -> tuple[int, int]:
+        """
+        速度とステアリング角をPWMデューティに変換する。
+        """
+        # 反転の適用
         if self.speed_flip:
             speed = -speed
-
-        # ── ステアリング反転の適用 ──
         if self.steer_flip:
             steer_angle = -steer_angle
 
-        # ── ステアリング変換 ──
-        # steer_angle: [-steer_max_rad, +steer_max_rad] → [steer_right, steer_left]
-        steer_duty = map_range(
+        # ステアリング変換
+        steer_duty = self.map_range(
             steer_angle,
             -self.steer_max_rad,  # 右最大
              self.steer_max_rad,  # 左最大
              self.steer_right,
              self.steer_left
         )
-
-        # ── ステアリングバイアスの適用 (実機の個体差を吸収) ──
         steer_duty += self.steer_bias
-        steer_duty = clamp(steer_duty, min(self.steer_left, self.steer_right), max(self.steer_left, self.steer_right))
+        
+        # クランプ (ステアリング)
+        s_min, s_max = sorted([self.steer_left, self.steer_right])
+        steer_duty = int(self.clamp(steer_duty, s_min, s_max))
 
-        # ── ESC (速度) 変換 ──
-        if self.fixed_speed_mode:
-            if speed > self.speed_threshold:
-                esc_duty = self.fixed_esc_duty
-            elif speed < -self.speed_threshold:
-                esc_duty = self.esc_reverse
-            else:
-                esc_duty = self.esc_stop
+        # ESC変換
+        if self.fixed_speed_mode and speed > self.speed_threshold:
+            esc_duty = self.fixed_esc_duty
         else:
-            # speed (m/s) を duty_cycle にスケール
-            # マッピングを 0.0-1.0 m/s の範囲に縮小して、キーボード操作の感度を上げる
             if speed >= 0:
-                esc_duty = map_range(speed, 0.0, 1.0, self.esc_stop, self.esc_forward)
+                esc_duty = self.map_range(speed, 0.0, 1.0, self.esc_stop, self.esc_forward)
             else:
-                esc_duty = map_range(-speed, 0.0, 1.0, self.esc_stop, self.esc_reverse)
+                esc_duty = self.map_range(-speed, 0.0, 1.0, self.esc_stop, self.esc_reverse)
+        
+        return steer_duty, esc_duty
 
-        self.get_logger().debug(
-            f'drive: speed={speed:.2f} steer={steer_angle:.3f}rad '
-            f'→ steer_duty={steer_duty} esc_duty={esc_duty}'
+
+class HardwareBridge(Node):
+    def __init__(self):
+        super().__init__('hardware_bridge')
+        self._declare_parameters()
+        
+        # 内部状態
+        self.pca: Optional[PCA9685] = None
+        self.mapper = self._create_mapper()
+        
+        self._init_hardware()
+        
+        # サブスクライバ
+        self.drive_sub = self.create_subscription(
+            AckermannDriveStamped, '/drive', self.drive_callback, 10
+        )
+        self.get_logger().info('hardware_bridge node started.')
+
+    def _declare_parameters(self):
+        self.declare_parameter('steer_ch', 0)
+        self.declare_parameter('steer_center', 4700)
+        self.declare_parameter('steer_left',   3700)
+        self.declare_parameter('steer_right',  5700)
+        self.declare_parameter('steer_max_angle', 0.4)
+        self.declare_parameter('steer_bias', 0)
+        self.declare_parameter('steer_flip', False)
+
+        self.declare_parameter('esc_ch', 1)
+        self.declare_parameter('esc_stop',    5200)
+        self.declare_parameter('esc_forward', 5800)
+        self.declare_parameter('esc_reverse', 4000)
+        self.declare_parameter('speed_flip', False)
+
+        self.declare_parameter('fixed_speed_mode', False)
+        self.declare_parameter('fixed_esc_duty', 5800)
+        self.declare_parameter('speed_threshold', 0.05)
+        self.declare_parameter('esc_arm_duration', 3.0)
+
+    def _create_mapper(self) -> DriveMapper:
+        return DriveMapper(
+            steer_center=self.get_parameter('steer_center').value,
+            steer_left=self.get_parameter('steer_left').value,
+            steer_right=self.get_parameter('steer_right').value,
+            steer_max_rad=self.get_parameter('steer_max_angle').value,
+            steer_bias=self.get_parameter('steer_bias').value,
+            steer_flip=self.get_parameter('steer_flip').value,
+            esc_stop=self.get_parameter('esc_stop').value,
+            esc_forward=self.get_parameter('esc_forward').value,
+            esc_reverse=self.get_parameter('esc_reverse').value,
+            speed_flip=self.get_parameter('speed_flip').value,
+            fixed_speed_mode=self.get_parameter('fixed_speed_mode').value,
+            fixed_esc_duty=self.get_parameter('fixed_esc_duty').value,
+            speed_threshold=self.get_parameter('speed_threshold').value
         )
 
-        self._set_hardware(steer_duty, esc_duty)
+    def _init_hardware(self):
+        if not HW_AVAILABLE:
+            self.get_logger().warn(f'Hardware not available (Dry-run): {IMPORT_ERROR_MSG}')
+            return
 
-    def _set_hardware(self, steer_duty: int, esc_duty: int):
+        try:
+            i2c = busio.I2C(board.SCL, board.SDA)
+            self.pca = PCA9685(i2c, address=0x40)
+            self.pca.frequency = 50
+            
+            # ESCアーム処理
+            arm_duration = self.get_parameter('esc_arm_duration').value
+            esc_stop = self.get_parameter('esc_stop').value
+            steer_center = self.get_parameter('steer_center').value
+            
+            self.get_logger().info(f'ESC arming for {arm_duration}s...')
+            self._set_duty(self.get_parameter('steer_ch').value, steer_center)
+            self._set_duty(self.get_parameter('esc_ch').value, esc_stop)
+            time.sleep(arm_duration)
+            self.get_logger().info('ESC armed.')
+        except Exception as e:
+            self.get_logger().error(f'Failed to init PCA9685: {e}')
+            self.pca = None
+
+    def drive_callback(self, msg: AckermannDriveStamped):
+        steer_duty, esc_duty = self.mapper.map_drive(msg.drive.speed, msg.drive.steering_angle)
+        
+        self.get_logger().debug(f'speed={msg.drive.speed:.2f} steer={msg.drive.steering_angle:.3f} -> s={steer_duty} e={esc_duty}')
+        
+        self._set_duty(self.get_parameter('steer_ch').value, steer_duty)
+        self._set_duty(self.get_parameter('esc_ch').value, esc_duty)
+
+    def _set_duty(self, channel: int, duty: int):
         if self.pca is not None:
-            self.pca.channels[self.steer_ch].duty_cycle = steer_duty
-            self.pca.channels[self.esc_ch].duty_cycle   = esc_duty
+            self.pca.channels[channel].duty_cycle = int(duty)
         else:
-            # DRY-RUNモード: ログ出力のみ
-            self.get_logger().info(
-                f'[DRY-RUN] steer_ch={self.steer_ch} duty={steer_duty}, '
-                f'esc_ch={self.esc_ch} duty={esc_duty}'
-            )
+            self.get_logger().info(f'[DRY-RUN] ch={channel} duty={duty}')
 
     def destroy_node(self):
-        """シャットダウン時にハードウェアを安全停止"""
-        self.get_logger().info('Shutting down: sending STOP to ESC and centering steering.')
+        self.get_logger().info('Shutting down: stopping hardware.')
         if self.pca is not None:
-            self.pca.channels[self.steer_ch].duty_cycle = self.steer_center
-            self.pca.channels[self.esc_ch].duty_cycle   = self.esc_stop
-            self.pca.deinit()
+            try:
+                self._set_duty(self.get_parameter('steer_ch').value, self.get_parameter('steer_center').value)
+                self._set_duty(self.get_parameter('esc_ch').value, self.get_parameter('esc_stop').value)
+                self.pca.deinit()
+            except Exception:
+                pass
         super().destroy_node()
 
 
@@ -217,7 +221,6 @@ def main(args=None):
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

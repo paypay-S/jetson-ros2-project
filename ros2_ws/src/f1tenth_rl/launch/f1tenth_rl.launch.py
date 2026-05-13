@@ -30,7 +30,7 @@ def generate_launch_description():
     home_dir = os.path.expanduser('~')
     model_path_arg = DeclareLaunchArgument(
         'model_path',
-        default_value=os.path.join(home_dir, 'projects/f1tenth-project/models/model'),
+        default_value=os.path.join(home_dir, 'projects/f1tenth-project/models/ppo_10M_exp39_high_res_early_brake.onnx'),
         description='Path to the trained PPO model (absolute or relative to home)'
     )
     
@@ -49,6 +49,16 @@ def generate_launch_description():
         description='Fixed PWM duty cycle for ESC in fixed speed mode'
     )
 
+    speed_multiplier_arg = DeclareLaunchArgument(
+        'speed_multiplier', default_value='1.0',
+        description='Multiplier for AI predicted speed'
+    )
+
+    steer_multiplier_arg = DeclareLaunchArgument(
+        'steer_multiplier', default_value='1.0',
+        description='Multiplier for AI predicted steering'
+    )
+
     # ─── Nodes ───
     rl_driver_node = Node(
         package='f1tenth_rl',
@@ -57,7 +67,11 @@ def generate_launch_description():
         output='screen',
         parameters=[
             config_path,
-            {'model_path': LaunchConfiguration('model_path')}
+            {
+                'model_path': LaunchConfiguration('model_path'),
+                'speed_multiplier': LaunchConfiguration('speed_multiplier'),
+                'steer_multiplier': LaunchConfiguration('steer_multiplier')
+            }
         ]
     )
 
@@ -94,6 +108,8 @@ def generate_launch_description():
         rviz_arg,
         fixed_speed_mode_arg,
         fixed_esc_duty_arg,
+        speed_multiplier_arg,
+        steer_multiplier_arg,
         rl_driver_node,
         hardware_bridge_node,
         rviz_node
