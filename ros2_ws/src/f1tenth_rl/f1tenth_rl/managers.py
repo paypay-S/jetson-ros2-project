@@ -99,26 +99,11 @@ class RecoveryManager:
             return 0.0, 0.0, False
 
 
-class SafetyLayer:
-    """
-    前方障害物検知と緊急停止を管理するクラス。
-    """
-    def __init__(self, logger):
-        self.logger = logger
-
-    def check_front_collision(self, lidar: np.ndarray, check_angle_deg: float, total_fov_deg: float, stop_dist: float) -> Tuple[bool, float]:
-        """
-        前方中央の範囲に障害物があるかチェックする。
-        """
-        num_beams = len(lidar)
-        mid = num_beams // 2
-        width = int((check_angle_deg / total_fov_deg) * num_beams)
-        
-        start_idx = max(0, mid - width)
-        end_idx = min(num_beams, mid + width)
-        
-        check_area = lidar[start_idx : end_idx]
-        front_min = np.min(check_area)
-        
-        is_safe = front_min > stop_dist
-        return not is_safe, front_min
+# Note: SafetyLayer has been moved to safety.py as SafetyManager
+# Please use SafetyManager from safety.py for new code
+# SafetyManager provides:
+# - State transitions (NORMAL → FALLBACK_TO_PP → SAFE_STOP)
+# - Model health monitoring integration
+# - Collision recovery sequence management
+# - Gradual speed reduction strategy
+# - Front collision detection with LiDAR

@@ -1,4 +1,5 @@
 import os
+import time
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
@@ -9,7 +10,10 @@ from collections import deque
 from typing import Optional
 
 from .utils import LidarProcessor
-from .managers import ModelManager, RecoveryManager, SafetyLayer
+from .managers import ModelManager
+from .model_health import ModelHealthMonitor
+from .safety import SafetyManager
+from .collision_recovery import CollisionRecoverySequence
 from .racing_line import RacingLine
 from .pure_pursuit import PurePursuitController
 
@@ -23,8 +27,9 @@ class RLDriver(Node):
 
         # マネージャーの初期化
         self.model_manager = ModelManager(self.get_logger())
-        self.recovery_manager = RecoveryManager(self.get_logger(), self.get_clock())
-        self.safety_layer = SafetyLayer(self.get_logger())
+        
+        # 新しい安全管理システムの初期化（Phase 1コンポーネント）
+        self.model_health_monitor = ModelHealthMonitor(timeout_sec=self.get_parameter('model_inference_timeout').value)
 
         # プロセッサの初期化
         self.processor = LidarProcessor(
@@ -76,6 +81,25 @@ class RLDriver(Node):
             wheelbase=0.3255,  # 車両ホイールベース
             lookahead_dist=0.8
         )
+        
+        # 衝突復帰シーケンスと安全管理システムの初期化
+        self.collision_recovery = CollisionRecoverySequence(
+            self.pp_controller,
+            backing_time=1.5,
+            turning_time=2.0,
+            moving_forward_time=1.0
+        )
+        self.safety_manager = SafetyManager(
+            self.model_health_monitor,
+            self.pp_controller,
+            self.collision_recovery,
+            fallback_timeout_sec=10.0,
+            collision_recovery_timeout_sec=5.0
+        )
+        # 既存パラメータとの互換性を保つため、safety_manager のパラメータを設定
+        self.safety_manager.collision_check_angle_deg = 60.0  # 前方 ±30°
+        self.safety_manager.collision_total_fov_deg = 200.0   # 既存コードの値に合わせる
+        self.safety_manager.collision_stop_dist = 0.3  # デフォルト
 
         # Frame Stacking / Frame Skipping 用のバッファ
         self.frame_stack_size = self.get_parameter('frame_stack').value
@@ -111,6 +135,8 @@ class RLDriver(Node):
         self.declare_parameter('min_speed', 0.3)
         self.declare_parameter('max_speed', 2.5)
         self.declare_parameter('steer_limit', 0.4189)
+        self.declare_parameter('model_inference_timeout', 0.020)
+        self.declare_parameter('use_pure_pursuit', False)
         # ゲイン
         self.declare_parameter('speed_multiplier', 1.0)
         self.declare_parameter('steer_multiplier', 1.0)
@@ -172,48 +198,55 @@ class RLDriver(Node):
         # 2. 状態更新 (229次元を組み立ててバッファへ格納し、458次元状態を構築)
         self._update_state(lidar)
 
-        # 3. 復帰動作中かチェック
-        speed, steer, active = self.recovery_manager.get_command(
-            self.get_parameter('recovery_reverse_speed').value,
-            self.get_parameter('recovery_brake_duration').value,
-            self.get_parameter('recovery_stop_duration').value,
-            self.get_parameter('recovery_back_duration').value
-        )
-        if active:
-            self.publish_drive(speed, steer)
-            return
+        # 3. 安全レイヤー / 推論 / Pure Pursuit 制御
+        use_pure_pursuit = self.get_parameter('use_pure_pursuit').value
+        self.safety_manager.collision_check_angle_deg = self.get_parameter('safety_check_angle').value
+        self.safety_manager.collision_stop_dist = self.get_parameter('recovery_stop_dist').value
+        self.safety_manager.collision_total_fov_deg = 200.0  # LiDAR FOV に合わせた値
 
-        # 4. 安全レイヤー / 復帰トリガー（生距離 [m] を渡して判定）
-        is_collision, dist = self.safety_layer.check_front_collision(
-            lidar, self.get_parameter('safety_check_angle').value, 200.0, self.get_parameter('recovery_stop_dist').value
-        )
+        is_collision, dist = self.safety_manager.check_front_collision(lidar)
 
-        if self.get_parameter('recovery_enabled').value and is_collision:
-            self.recovery_manager.trigger_count_wall += 1
-            if self.recovery_manager.trigger_count_wall >= self.get_parameter('trigger_limit').value:
-                # 復帰開始
-                side_steer = self.get_parameter('recovery_steer_magnitude').value
-                # 左右の開けた方に逃げる
-                mid = len(lidar) // 2
-                if np.mean(lidar[:mid]) < np.mean(lidar[mid:]):
-                    self.recovery_manager.start(side_steer)
-                else:
-                    self.recovery_manager.start(-side_steer)
-                return
-        else:
-            self.recovery_manager.trigger_count_wall = 0
-
-        # 緊急停止 (復帰距離より短い場合)
+        # 緊急停止
         if self.get_parameter('safety_enable').value and dist < self.get_parameter('safety_stop_dist').value:
             self.get_logger().warn(f"EMERGENCY STOP! Dist: {dist:.2f}m")
             self.publish_drive(0.0, 0.0)
             return
 
-        # 5. モデル推論
-        if self.current_state is not None:
-            action = self.model_manager.predict(self.current_state)
-            if action is not None:
-                self._apply_action(action)
+        pure_pursuit_action = self._get_pure_pursuit_action()
+        model_action = None
+        model_healthy = True if use_pure_pursuit else False
+        inference_errors = {}
+
+        if not use_pure_pursuit and self.current_state is not None and self.model_manager.model_type is not None:
+            self.model_health_monitor.start_inference()
+            candidate_action = self.model_manager.predict(self.current_state)
+            if candidate_action is not None:
+                model_action = candidate_action
+                model_healthy, inference_errors = self.model_health_monitor.end_inference(candidate_action)
+            else:
+                model_healthy = False
+                inference_errors['prediction_failed'] = True
+
+        current_time = time.time()
+        self.safety_manager.update_state(
+            model_healthy=model_healthy,
+            collision=is_collision,
+            x=self.pose_x,
+            y=self.pose_y,
+            yaw=self.pose_yaw,
+            current_time=current_time
+        )
+
+        action = self.safety_manager.get_action(
+            model_action=model_action,
+            pure_pursuit_action=pure_pursuit_action,
+            robot_state=(self.pose_x, self.pose_y, self.pose_yaw, self.speed),
+            x=self.pose_x,
+            y=self.pose_y,
+            yaw=self.pose_yaw,
+            current_time=current_time
+        )
+        self._apply_action(action)
 
     def _update_state(self, lidar):
         """
@@ -267,6 +300,14 @@ class RLDriver(Node):
 
         self.current_state = np.concatenate(stacked_obs)
         self.current_state = np.nan_to_num(self.current_state, nan=0.0, posinf=1.0, neginf=-1.0)
+
+    def _get_pure_pursuit_action(self):
+        max_speed = self.get_parameter('max_speed').value
+        min_speed = self.get_parameter('min_speed').value
+        base_steer, base_speed = self.pp_controller.get_base_action(
+            self.pose_x, self.pose_y, self.pose_yaw, self.speed, max_speed, min_speed
+        )
+        return np.array([base_steer, base_speed], dtype=np.float32)
 
     def _apply_action(self, action):
         pred_steer_res = float(action[0])

@@ -27,6 +27,8 @@ rl_driver:
     use_residual_rl: true
     residual_steer_scale: 0.2
     residual_speed_scale: 1.0
+    model_inference_timeout: 0.020
+    use_pure_pursuit: false
     
     # --- 安全・復帰レイヤーの設定 (最新の成功設定) ---
     safety_enable: true
