@@ -233,3 +233,35 @@ pytest ros2_ws/src/f1tenth_rl/test/test_lidar_processor.py
       ```bash
       sudo apt install ros-foxy-slam-toolbox ros-foxy-nav2-map-server
       ```
+
+---
+
+## 🚗 右壁追従の起動コマンド
+実機で右側壁追従を動かすには、まず `hardware_bridge` を起動し、別ターミナルで `right_wall_follow` を起動します。
+
+```bash
+cd ~/projects/f1tenth-project/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run f1tenth_rl hardware_bridge
+```
+
+別のターミナルで:
+
+```bash
+cd ~/projects/f1tenth-project/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 run f1tenth_rl right_wall_follow
+```
+
+さらに別のターミナルで動作を確認する場合:
+
+```bash
+cd ~/projects/f1tenth-project/ros2_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+ros2 topic echo /drive
+```
+
+`/scan` が届いていない場合は、LiDAR が正しく動作しているかを先に確認してください。

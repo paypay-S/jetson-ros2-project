@@ -3,14 +3,22 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist, TransformStamped
 from nav_msgs.msg import Odometry
+from ackermann_msgs.msg import AckermannDriveStamped
 from tf2_ros import TransformBroadcaster
 import numpy as np
 import math
+import os
+import csv
 
 class MockRobot(Node):
     def __init__(self):
         super().__init__('mock_robot')
-        # Robot State
+        
+        # パラメータの宣言 (レーシングラインの初期位置ロード用)
+        self.declare_parameter('racing_line_path', '')
+        rl_path = self.get_parameter('racing_line_path').value
+
+        # Robot State (Default)
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
@@ -18,8 +26,30 @@ class MockRobot(Node):
         self.w = 0.0
         self.last_time = self.get_clock().now()
 
+        # レーシングラインがある場合、最初のウェイポイントを初期位置に自動セット
+        if rl_path and os.path.exists(rl_path):
+            try:
+                with open(rl_path, 'r') as f:
+                    reader = csv.reader(f)
+                    rows = list(reader)
+                    # ヘッダーを避けて最初の有効な点を探索
+                    for row in rows:
+                        try:
+                            self.x = float(row[0])
+                            self.y = float(row[1])
+                            # 3列目がyaw角（向き）の場合、それを適用
+                            if len(row) > 2:
+                                self.theta = float(row[2])
+                            break
+                        except ValueError:
+                            continue
+                self.get_logger().info(f"Initialized mock robot spawn pose at racing line start: x={self.x:.3f}, y={self.y:.3f}, theta={self.theta:.3f}")
+            except Exception as e:
+                self.get_logger().warn(f"Could not load racing line for initialization: {str(e)}")
+
         # Publishers / Subscribers
         self.cmd_sub = self.create_subscription(Twist, '/cmd_vel', self.cmd_cb, 10)
+        self.drive_sub = self.create_subscription(AckermannDriveStamped, '/drive', self.drive_cb, 10)
         self.scan_pub = self.create_publisher(LaserScan, '/scan', 10)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -28,14 +58,24 @@ class MockRobot(Node):
         self.create_timer(0.05, self.update_state)  # 20 Hz
         self.create_timer(0.1, self.publish_scan)   # 10 Hz
 
-        # Map environment: 10m x 10m room
-        self.room_size = 10.0
+        # Map environment: 50m x 50m room (十分大きな仮想部屋)
+        self.room_size = 50.0
 
-        self.get_logger().info('Mock robot initialized. Ready for teleop!')
+        self.get_logger().info('Mock robot initialized. Ready for simulation and teleop!')
 
     def cmd_cb(self, msg: Twist):
         self.v = msg.linear.x
         self.w = msg.angular.z
+
+    def drive_cb(self, msg: AckermannDriveStamped):
+        # アッカーマンキネマティクスに基づく旋回角速度 w の計算
+        # w = v * tan(delta) / L (wheelbase)
+        self.v = msg.drive.speed
+        wheelbase = 0.3255
+        if abs(msg.drive.steering_angle) > 1e-5:
+            self.w = (self.v / wheelbase) * math.tan(msg.drive.steering_angle)
+        else:
+            self.w = 0.0
 
     def update_state(self):
         now = self.get_clock().now()
@@ -131,7 +171,8 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     node.destroy_node()
-    rclpy.shutdown()
+    if rclpy.ok():
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

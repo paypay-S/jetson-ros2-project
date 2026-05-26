@@ -1,7 +1,7 @@
 rl_driver:
   ros__parameters:
     # モデルの相対パス (ワークスペースルート基準)
-    model_path: "a_tyokuzentest_4.onnx "
+    model_path: "0_magp_late.onnx"
     
     # --- 観測値の正規化パラメータ (手動設定) ---
     # 学習時 (config.py) の統計量と一致させる必要があります。
@@ -21,21 +21,23 @@ rl_driver:
     lidar_center_crop: true
     training_range_max: 30.0
     min_speed: 0.3
-    max_speed: 2.5
+    max_speed: 1.0
     steer_limit: 0.4189
     racing_line_path: ""
     use_residual_rl: true
     residual_steer_scale: 0.2
     residual_speed_scale: 1.0
     model_inference_timeout: 0.020
-    use_pure_pursuit: false
-    
+    use_pure_pursuit: true
+    force_right_turn: false
+    force_right_steer: 0.3
+
     # --- 安全・復帰レイヤーの設定 (最新の成功設定) ---
-    safety_enable: true
+    safety_enable: false
     safety_stop_dist: 0.2
     safety_check_angle: 5.0
     
-    recovery_enabled: true
+    recovery_enabled: false
     recovery_stop_dist: 0.5
     recovery_reverse_speed: -0.5
     recovery_steer_magnitude: 0.4
@@ -49,12 +51,12 @@ rl_driver:
 
     # --- Sim-to-Real 対策 ---
     use_sim_to_real: true
-    lidar_noise_std: 0.02
+    lidar_noise_std: 0.01
     
     # 指数移動平均(EMA)による平滑化 (0.0=変化なし, 1.0=即座に最新値を反映)
     # 値を小さくするほど滑らかになりますが、反応が遅れます。
-    steer_smoothing: 0.3
-    speed_smoothing: 0.4
+    steer_smoothing: 0.7
+    speed_smoothing: 0.7
     
     # 1フレーム(推論1回)あたりに許可される最大変化量 (スルーレート制限)
     # サーボやモーターへの急激な負荷(スパイク)を防ぎます。
@@ -82,7 +84,7 @@ hardware_bridge:
     # 左一杯に切ったときのPWM値 (限界を超えないように注意)
     steer_left: 4000
     # 右一杯に切ったときのPWM値
-    steer_right: 6200
+    steer_right: 6400
     # ROS側の最大ステアリング角度(radian)。シミュレータと合わせる
     steer_max_angle: 0.4
     steer_bias: 0
@@ -93,14 +95,14 @@ hardware_bridge:
     # モーターが停止する中立PWM値
     esc_stop: 5200
     # 前進時の最大想定PWM値
-    esc_forward: 6800
+    esc_forward: 6400
     # 後退時(今回は使用しないことが多い)
-    esc_reverse: 3900
+    esc_reverse: 4000
     speed_flip: false
 
     # --- 運転モード ---
     # 推論された速度(Speed)を無視し、ステアリングのみAI操作とするかどうか
-    fixed_speed_mode: false
+    fixed_speed_mode: true
     # fixed_speed_mode=true の場合に実際に出力される前進PWM値
     # この値を上げると物理的な速度が上がりますが、クラッシュのリスクが高まります
     fixed_esc_duty: 5700

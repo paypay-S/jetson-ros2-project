@@ -16,7 +16,7 @@ class ModelManager:
         self.model_type: Optional[str] = None
         self.input_dim = 0
 
-    def load_model(self, model_path: str):
+    def load_model(self,model_path: str):
         if not model_path or model_path.lower() == "none":
             self.logger.info("No model path provided. Running in recovery-only mode.")
             return

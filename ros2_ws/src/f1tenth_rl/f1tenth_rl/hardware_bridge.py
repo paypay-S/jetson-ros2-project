@@ -80,14 +80,23 @@ class DriveMapper:
         if self.steer_flip:
             steer_angle = -steer_angle
 
-        # ステアリング変換
-        steer_duty = self.map_range(
-            steer_angle,
-            -self.steer_max_rad,  # 右最大
-             self.steer_max_rad,  # 左最大
-             self.steer_right,
-             self.steer_left
-        )
+        # ステアリング変換 (steer_center を基準に左右に分割して線形補間)
+        if steer_angle >= 0:
+            steer_duty = self.map_range(
+                steer_angle,
+                0.0,
+                self.steer_max_rad,
+                self.steer_center,
+                self.steer_left
+            )
+        else:
+            steer_duty = self.map_range(
+                steer_angle,
+                -self.steer_max_rad,
+                0.0,
+                self.steer_right,
+                self.steer_center
+            )
         steer_duty += self.steer_bias
         
         # クランプ (ステアリング)

@@ -16,6 +16,7 @@ from .safety import SafetyManager
 from .collision_recovery import CollisionRecoverySequence
 from .racing_line import RacingLine
 from .pure_pursuit import PurePursuitController
+from tf2_ros import Buffer, TransformListener
 
 
 class RLDriver(Node):
@@ -114,6 +115,10 @@ class RLDriver(Node):
         self.odom_sub = self.create_subscription(Odometry, "/odom", self.odom_callback, 10)
         self.drive_pub = self.create_publisher(AckermannDriveStamped, "/drive", 10)
 
+        # TF2 リスナーの初期化 (Cartographerの自己位置 map -> base_link 取得用)
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
     def _declare_parameters(self):
         self.declare_parameter('model_path', 'models/model')
         # LiDAR
@@ -158,6 +163,9 @@ class RLDriver(Node):
         self.declare_parameter('use_residual_rl', True)
         self.declare_parameter('residual_steer_scale', 0.2)
         self.declare_parameter('residual_speed_scale', 1.0)
+        # 右折強制
+        self.declare_parameter('force_right_turn', False)
+        self.declare_parameter('force_right_steer', 0.3)
 
     def _load_model(self):
         model_path_param = self.get_parameter('model_path').get_parameter_value().string_value
@@ -178,6 +186,7 @@ class RLDriver(Node):
         self.model_manager.load_model(model_path)
 
     def odom_callback(self, msg):
+        self._odom_received = True
         self.speed = msg.twist.twist.linear.x
         self.steer = msg.twist.twist.angular.z
 
@@ -191,7 +200,65 @@ class RLDriver(Node):
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
         self.pose_yaw = np.arctan2(siny_cosp, cosy_cosp)
 
+    def _update_pose_from_tf(self):
+        """
+        Cartographer SLAM が計算した最新の自己位置 (map -> base_link の TF) を取得して自己位置を更新する。
+        TFが取得できない場合（SLAM未起動時など）は、デッドレコニング（自己積算オドメトリ）に自動フォールバックする。
+        """
+        # 前回の呼び出しからの経過時間 dt の計算
+        now = self.get_clock().now()
+        if not hasattr(self, '_last_pose_time'):
+            self._last_pose_time = now
+        dt = (now - self._last_pose_time).nanoseconds / 1e9
+        self._last_pose_time = now
+        
+        if dt > 0.5:  # 大きな遅延や初回起動時は積算をスキップ
+            dt = 0.0
+
+        try:
+            # タイムアウト(10ms)を設けてTFを検索
+            t = self.tf_buffer.lookup_transform(
+                'map',
+                'base_link',
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.01)
+            )
+            self.pose_x = t.transform.translation.x
+            self.pose_y = t.transform.translation.y
+            
+            # クォータニオンから yaw への変換
+            q = t.transform.rotation
+            siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
+            cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+            self.pose_yaw = np.arctan2(siny_cosp, cosy_cosp)
+
+            # 50回に1回、自己位置をログ出力
+            if not hasattr(self, '_pose_log_cnt'):
+                self._pose_log_cnt = 0
+            self._pose_log_cnt += 1
+            if self._pose_log_cnt % 50 == 0:
+                self.get_logger().info(f"[SLAM Pose] x={self.pose_x:.3f}, y={self.pose_y:.3f}, yaw={self.pose_yaw:.3f}")
+        except Exception as e:
+            # TFが取得できない場合、アッカーマン・キネマティックモデルに基づくデッドレコニング（疑似オドメトリ）で積算
+            wheelbase = 0.3255
+            # self.steer と self.speed を用いて車両の位置と向きを積算
+            self.pose_yaw += (self.speed / wheelbase) * np.tan(self.steer) * dt
+            self.pose_x += self.speed * np.cos(self.pose_yaw) * dt
+            self.pose_y += self.speed * np.sin(self.pose_yaw) * dt
+
+            # 50回に1回、デッドレコニングでの動作状況を出力
+            if not hasattr(self, '_tf_err_cnt'):
+                self._tf_err_cnt = 0
+            self._tf_err_cnt += 1
+            if self._tf_err_cnt % 50 == 0:
+                self.get_logger().info(
+                    f"[Dead Reckoning Pose] (SLAM active: False) x={self.pose_x:.3f}, y={self.pose_y:.3f}, yaw={self.pose_yaw:.3f}"
+                )
+
     def scan_callback(self, msg):
+        # TF から最新の自己位置を更新
+        self._update_pose_from_tf()
+
         # 1. LiDAR 前処理（ダウンサンプリング、中心クロップ、ノイズ除去を行うが、正規化は行わない生の距離 [m]）
         lidar = self.processor.process(msg.ranges, msg.range_max)
 
@@ -361,8 +428,17 @@ class RLDriver(Node):
             final_steer = s_alpha * s_clipped + (1.0 - s_alpha) * self.last_steer
             final_speed = v_alpha * v_clipped + (1.0 - v_alpha) * self.last_speed
 
+        # 右折のみを強制
+        if self.get_parameter('force_right_turn').value:
+            right_steer = float(self.get_parameter('force_right_steer').value)
+            final_steer = -max(abs(final_steer), abs(right_steer))
+
         # 次ステップ用の行動履歴の保存 (正規化スケール)
         self.prev_action = np.array([pred_steer_res, pred_speed_res], dtype=np.float32)
+
+        # /odom トピックが無い場合（実機のみのSLAM環境など）の車速フィードバックの代用
+        if not hasattr(self, '_odom_received') or not self._odom_received:
+            self.speed = final_speed
 
         self.last_steer, self.last_speed = final_steer, final_speed
         self.publish_drive(final_speed, final_steer)

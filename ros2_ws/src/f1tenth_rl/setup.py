@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'rl_driver = f1tenth_rl.rl_driver:main',
             'hardware_bridge = f1tenth_rl.hardware_bridge:main',
+            'right_wall_follow = f1tenth_rl.right_wall_follow:main',
         ],
     },
 )
